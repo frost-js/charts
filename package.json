@@ -1,16 +1,81 @@
 {
-    "name": "frostui-charts",
+    "name": "@fr0st/charts",
     "version": "1.0.0",
-    "description": "",
-    "main": "index.js",
-    "scripts": {
-        "build": "node build.js",
-        "test": "echo \"Error: no test specified\" && exit 1"
+    "private": false,
+    "description": "Responsive canvas bar, line, and pie charts for Frost UI.",
+    "keywords": [
+        "charts",
+        "canvas",
+        "bar",
+        "line",
+        "pie",
+        "frost"
+    ],
+    "homepage": "https://github.com/frost-js/charts",
+    "bugs": {
+        "url": "https://github.com/frost-js/charts/issues",
+        "email": "elusivecodes@gmail.com"
     },
-    "author": "",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/frost-js/charts.git"
+    },
     "license": "MIT",
+    "author": "Elusive <elusivecodes@gmail.com>",
+    "type": "module",
+    "exports": {
+        ".": {
+            "import": "./dist/frost-charts.esm.js",
+            "default": "./dist/frost-charts.esm.js"
+        },
+        "./dist/*": "./dist/*",
+        "./src/*": "./src/*"
+    },
+    "main": "./dist/frost-charts.esm.js",
+    "jsdelivr": "./dist/frost-charts.min.js",
+    "unpkg": "./dist/frost-charts.min.js",
+    "module": "./dist/frost-charts.esm.js",
+    "files": [
+        "dist",
+        "LICENSE",
+        "README.md",
+        "src"
+    ],
+    "scripts": {
+        "build": "vite build && vite build --mode umd",
+        "lint": "eslint",
+        "test": "npm run build && npm run test:browser",
+        "test:browser": "playwright test --forbid-only",
+        "test:coverage": "playwright test --config=playwright.coverage.config.js --forbid-only",
+        "test:headed": "playwright test --forbid-only --headed",
+        "test:ui": "playwright test --ui",
+        "dev": "vite --host 127.0.0.1"
+    },
+    "browserslist": [
+        "baseline newly available"
+    ],
     "devDependencies": {
-        "filepath": "^1.1.0",
-        "terser": "^4.8.0"
+        "@fr0st/eslint-config": "^6.0.1",
+        "@fr0st/query": "^5.0.2",
+        "@fr0st/ui": "^4.0.3",
+        "@playwright/test": "^1.64.1",
+        "eslint": "^10.13.0",
+        "monocart-reporter": "2.14.0",
+        "vite": "^8.3.5"
+    },
+    "overrides": {
+        "monocart-reporter": {
+            "monocart-coverage-reports": "2.13.0"
+        }
+    },
+    "peerDependencies": {
+        "@fr0st/query": "^5.0.2",
+        "@fr0st/ui": "^4.0.3"
+    },
+    "engines": {
+        "node": "^20.19.0 || ^22.13.0 || >=24"
+    },
+    "publishConfig": {
+        "access": "public"
     }
 }
