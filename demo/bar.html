@@ -1,65 +1,121 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-ui-theme="light">
 
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Frost Chart</title>
-    <link rel="stylesheet" href="../node_modules/@fr0st/ui/dist/frost-ui.css">
-    <script src="../node_modules/@fr0st/ui/dist/frost-ui-bundle.js"></script>
+    <title>Grouped bars · Frost Charts</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fr0st/ui@4/dist/frost-ui.min.css">
     <script src="../dist/frost-charts.js"></script>
 </head>
 
 <body>
-    <nav class="p-3"><a href="index.html">All chart demos</a></nav>
-    <div id="chart" style="height: 500px;"></div>
-    <script>
-        const chart = document.getElementById('chart');
+    <header class="navbar bg-glass border-bottom">
+        <div class="container d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="index.html">
+                <span class="badge bg-primary bg-gradient fs-5" aria-hidden="true">F</span>
+                <span>Charts</span>
+            </a>
+            <nav class="d-flex flex-wrap gap-2" aria-label="Chart examples">
+                <a class="btn btn-sm btn-primary" href="bar.html" aria-current="page">Grouped bars</a>
+                <a class="btn btn-sm btn-outline-primary" href="line.html">Line series</a>
+                <a class="btn btn-sm btn-outline-primary" href="pie.htm">Pie slices</a>
+            </nav>
+        </div>
+    </header>
+    <main class="container py-4 py-lg-5">
+        <header class="mb-4">
+            <span class="badge bg-primary-subtle text-primary-subtle mb-3">Grouped bars</span>
+            <h1 class="display-5">Compare monthly results</h1>
+            <p class="lead text-body-secondary mb-0">Compare four teams across five months, including values below zero.</p>
+        </header>
 
-        new UI.Chart(chart, {
+        <section class="card shadow-sm mb-4" aria-label="Interactive bar chart">
+            <div class="card-body p-3 p-md-4">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+                    <h2 class="h5 mb-0">Compare monthly results</h2>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-primary btn-sm" id="update-data" type="button">Update data</button>
+                        <button class="btn btn-outline-primary btn-sm" id="reset-data" type="button">Reset</button>
+                    </div>
+                </div>
+                <div id="chart" style="height: 400px;"></div>
+                <p class="small text-body-secondary mb-0 mt-3" id="chart-status" role="status">Showing the original data.</p>
+            </div>
+        </section>
+
+        <section class="row g-4 mb-5" aria-label="Things to try">
+            <div class="col-md-6">
+                <h2 class="h5">Inspect the values</h2>
+                <p class="text-body-secondary mb-0">Hover over a bar to see its label and value. Resize the window to see the chart adapt.</p>
+            </div>
+            <div class="col-md-6">
+                <h2 class="h5">Try an update</h2>
+                <p class="text-body-secondary mb-0">Bars grow from the zero baseline and transition when the data changes. Reduced-motion preferences are respected automatically.</p>
+            </div>
+        </section>
+
+        <footer class="border-top pt-4 text-body-secondary">
+            Source and API: <a href="../README.md">README</a> · <a href="https://github.com/frost-js/charts">GitHub</a>
+        </footer>
+    </main>
+
+    <script>
+        const data = {
+            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+            datasets: [
+                {
+                    label: 'North',
+                    data: [20, 25, 250, 90, 33],
+                    backgroundColor: '#6366f1',
+                    borderWidth: 0,
+                },
+                {
+                    label: 'South',
+                    data: [24, -80, 33, 67, 23],
+                    backgroundColor: '#14b8a6',
+                    borderWidth: 0,
+                },
+                {
+                    label: 'East',
+                    data: [91, 15, -8, 32, 151],
+                    backgroundColor: '#f59e0b',
+                    borderWidth: 0,
+                },
+                {
+                    label: 'West',
+                    data: [44, 3, 12, 125, 16],
+                    backgroundColor: '#ec4899',
+                    borderWidth: 0,
+                },
+            ],
+        };
+        const chart = new Chart(document.getElementById('chart'), {
             type: 'bar',
-            title: {
-                text: 'This is a really long title for the chart, and it extends beyond the maximum width of the available chart area',
-                position: 'top'
+            data,
+            title: { display: false },
+            animation: { duration: 800 },
+            legend: { position: 'bottom' },
+            scales: {
+                x: { grid: { display: false } },
+                y: { grid: { lineColor: '#e2e8f0', drawBorder: false } },
             },
-            legend: {
-                position: 'right',
-                align: 'center',
-                // maxHeight: 20,
-                labels: {
-                    textAlign: 'start'
-                }
-            },
-            data: {
-                labels: ['A', 'B', 'C', 'D', 'E'],
-                datasets: [
-                    {
-                        label: 'Dataset 1',
-                        data: [20, 25, 250, 90, 33],
-                        borderColor: 'blue',
-                        backgroundColor: 'rgba(0,0,255,.75)'
-                    },
-                    {
-                        label: 'Dataset 2',
-                        data: [24, -80, 33, 67, 23],
-                        borderColor: 'red',
-                        backgroundColor: 'rgba(255,0,0,.75)'
-                    },
-                    {
-                        label: 'Dataset 3',
-                        data: [91, 15, -8, 32, 151],
-                        borderColor: 'green',
-                        backgroundColor: 'rgba(0,255,0,.75)'
-                    },
-                    {
-                        label: 'Dataset 456',
-                        data: [44, 3, 12, 125, 16],
-                        borderColor: 'purple',
-                        backgroundColor: 'rgba(127,0,127,.75)'
-                    }
-                ]
+        });
+
+        document.getElementById('update-data').addEventListener('click', () => {
+            const datasets = chart.getData();
+
+            for (const dataset of datasets) {
+                dataset.data.push(dataset.data.shift());
             }
+
+            chart.setData({ labels: data.labels, datasets });
+            document.getElementById('chart-status').textContent = 'Values shifted to the next category.';
+        });
+
+        document.getElementById('reset-data').addEventListener('click', () => {
+            chart.setData(data);
+            document.getElementById('chart-status').textContent = 'Showing the original data.';
         });
     </script>
 </body>

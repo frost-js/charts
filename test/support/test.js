@@ -24,7 +24,7 @@ const test = base.extend({
                 window.makeChart = (settings = {}) => {
                     window.chart?.dispose();
 
-                    window.chart = new UI.Chart(document.getElementById('chart'), {
+                    window.chart = new Chart(document.getElementById('chart'), {
                         animation: { duration: 0 },
                         title: { display: false },
                         legend: { display: false },

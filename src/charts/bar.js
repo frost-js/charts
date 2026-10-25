@@ -1,6 +1,6 @@
-import { getColor } from './data.js';
-import Layer from './layer.js';
-import { getScalePosition } from './scale.js';
+import { getColor } from '../data.js';
+import Layer from '../layers/layer.js';
+import { getScalePosition } from '../scale.js';
 
 /**
  * Renders grouped bars and interpolates between successive datasets.

@@ -1,8 +1,8 @@
 /**
- * @import Rect from './rect.js';
+ * @import Rect from '../rect.js';
  */
 
-import { measureText, updateFont } from './helpers.js';
+import { measureText, updateFont } from '../helpers.js';
 import Layer from './layer.js';
 
 /**

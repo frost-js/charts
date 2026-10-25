@@ -2,7 +2,7 @@
     "name": "@fr0st/charts",
     "version": "1.0.0",
     "private": false,
-    "description": "Responsive canvas bar, line, and pie charts for Frost UI.",
+    "description": "Standalone responsive canvas bar, line, and pie charts.",
     "keywords": [
         "charts",
         "canvas",
@@ -48,16 +48,13 @@
         "test:browser": "playwright test --forbid-only",
         "test:coverage": "playwright test --config=playwright.coverage.config.js --forbid-only",
         "test:headed": "playwright test --forbid-only --headed",
-        "test:ui": "playwright test --ui",
-        "dev": "vite --host 127.0.0.1"
+        "test:ui": "playwright test --ui"
     },
     "browserslist": [
         "baseline newly available"
     ],
     "devDependencies": {
         "@fr0st/eslint-config": "^6.0.1",
-        "@fr0st/query": "^5.0.2",
-        "@fr0st/ui": "^4.0.3",
         "@playwright/test": "^1.64.1",
         "eslint": "^10.13.0",
         "monocart-reporter": "2.14.0",
@@ -67,10 +64,6 @@
         "monocart-reporter": {
             "monocart-coverage-reports": "2.13.0"
         }
-    },
-    "peerDependencies": {
-        "@fr0st/query": "^5.0.2",
-        "@fr0st/ui": "^4.0.3"
     },
     "engines": {
         "node": "^20.19.0 || ^22.13.0 || >=24"

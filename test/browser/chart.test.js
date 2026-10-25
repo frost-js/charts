@@ -133,7 +133,7 @@ test('rejects negative pies and cleans up failed construction', async ({ page })
         const node = document.getElementById('chart');
 
         try {
-            new UI.Chart(node, {
+            new Chart(node, {
                 type: 'pie',
                 data: { labels: ['A'], datasets: [{ data: [-1] }] },
             });
@@ -157,7 +157,7 @@ test('rejects negative pies and cleans up failed construction', async ({ page })
             canvasCount,
             rejected,
             type: window.chart.options.type,
-            registered: UI.Chart.init(node) === window.chart,
+            registered: Chart.init(node) === window.chart,
         };
     });
 
@@ -269,7 +269,7 @@ test('resize tracks the container and disposal preserves original children', asy
         return {
             node: window.chart.node,
             options: window.chart.options,
-            registered: window.fQuery.hasData(node, UI.Chart.DATA_KEY),
+            canvases: node.querySelectorAll('canvas').length,
             children: node.innerHTML,
         };
     });
@@ -277,7 +277,7 @@ test('resize tracks the container and disposal preserves original children', asy
     expect(result).toEqual({
         node: null,
         options: null,
-        registered: false,
+        canvases: 0,
         children: '<span id="original">Original content</span>',
     });
 });
@@ -328,16 +328,48 @@ test('canvas tooltips treat labels as text and can be disabled', async ({ page }
     await expect(canvas).not.toHaveAttribute('aria-description');
 });
 
-test('query plugin reuses instances and disposes on query removal', async ({ page }) => {
+test('initialization reuses charts and disposal releases the container and listeners', async ({ page }) => {
     const result = await page.evaluate(() => {
         const node = document.getElementById('chart');
-        const chart = window.fQuery(node).chart({ animation: { duration: 0 } });
-        const same = UI.Chart.init(node) === chart;
-        window.fQuery(node).remove();
-        return { same, disposed: chart.node === null };
+        const chart = new Chart(node, { animation: { duration: 0 } });
+        const canvas = node.querySelector('canvas');
+        const same = Chart.init(node) === chart;
+        let duplicateRejected = false;
+
+        try {
+            new Chart(node);
+        } catch {
+            duplicateRejected = true;
+        }
+
+        chart.dispose();
+
+        // These would access disposed state if their listeners were still attached.
+        canvas.dispatchEvent(new PointerEvent('pointerleave'));
+        window.dispatchEvent(new Event('resize'));
+
+        const replacement = Chart.init(node, { animation: { duration: 0 } });
+
+        return {
+            same,
+            duplicateRejected,
+            disposed: chart.node === null,
+            replaced: replacement !== chart,
+            canvases: node.querySelectorAll('canvas').length,
+            hasUI: 'UI' in window,
+            hasQuery: 'fQuery' in window,
+        };
     });
 
-    expect(result).toEqual({ same: true, disposed: true });
+    expect(result).toEqual({
+        same: true,
+        duplicateRejected: true,
+        disposed: true,
+        replaced: true,
+        canvases: 1,
+        hasUI: false,
+        hasQuery: false,
+    });
 });
 
 test('high DPI uses a larger backing canvas without changing hit coordinates', async ({ browser }) => {
@@ -346,7 +378,7 @@ test('high DPI uses a larger backing canvas without changing hit coordinates', a
     await page.goto('/');
     await page.evaluate(() => {
         document.body.innerHTML = '<div id="chart" style="width:600px;height:400px"></div>';
-        new UI.Chart(document.getElementById('chart'), {
+        new Chart(document.getElementById('chart'), {
             data: { labels: ['A'], datasets: [{ data: [1] }] },
             legend: { display: false },
             scales: { x: { display: false }, y: { display: false } },
@@ -364,8 +396,8 @@ test('animation finishes and disposal cancels pending frames', async ({ page }) 
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.evaluate(() => {
         window.drawCount = 0;
-        const draw = UI.Chart.prototype.draw;
-        UI.Chart.prototype.draw = function() {
+        const draw = Chart.prototype.draw;
+        Chart.prototype.draw = function() {
             window.drawCount++; return draw.call(this);
         };
         window.makeChart({ animation: { duration: 100 } });

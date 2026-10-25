@@ -1,9 +1,9 @@
 /**
- * @import Rect from './rect.js';
+ * @import Rect from '../rect.js';
  */
 
+import { getScalePosition } from '../scale.js';
 import Layer from './layer.js';
-import { getScalePosition } from './scale.js';
 
 /**
  * Draws grid lines, axis borders, and ticks behind the data layer.

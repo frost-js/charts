@@ -1,4 +1,4 @@
-import { measureText, updateFont, wrapLines } from './helpers.js';
+import { measureText, updateFont, wrapLines } from '../helpers.js';
 import Layer from './layer.js';
 
 /**

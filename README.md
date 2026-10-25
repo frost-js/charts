@@ -1,11 +1,11 @@
 # Frost Charts
 
-Canvas bar, line, and pie charts for Frost UI. Charts support titles, legends, configurable axes, animated bar updates, pointer tooltips, responsive sizing, and high-DPI rendering.
+Standalone canvas bar, line, and pie charts with no runtime dependencies. Charts support titles, legends, configurable axes, animated updates, pointer tooltips, responsive sizing, and high-DPI rendering.
 
 ## Installation
 
 ```sh
-npm install @fr0st/charts @fr0st/query @fr0st/ui
+npm install @fr0st/charts
 ```
 
 The build tooling requires Node.js `^20.19.0 || ^22.13.0 || >=24`. The library targets browsers supported by the sibling Frost UI packages.
@@ -41,13 +41,12 @@ const chart = new Chart(document.getElementById('chart'), {
 });
 ```
 
-A named `Chart` export is also available. The UMD bundles extend `UI.Chart` and register the `fQuery(...).chart()` component method:
+A named `Chart` export is also available. The UMD bundles expose `window.Chart` and work without a module loader, Frost UI, or a stylesheet:
 
 ```html
-<script src="node_modules/@fr0st/ui/dist/frost-ui-bundle.js"></script>
 <script src="node_modules/@fr0st/charts/dist/frost-charts.js"></script>
 <script>
-    const chart = new UI.Chart(document.getElementById('chart'), {
+    const chart = new Chart(document.getElementById('chart'), {
         data: {
             labels: ['A', 'B'],
             datasets: [{ label: 'Values', data: [10, 20] }],
@@ -89,11 +88,13 @@ The original option groups remain available. See `Chart.defaults` in [src/chart.
 | `font` | 12px Helvetica/Arial | Base font inherited by titles, legends, ticks, and tooltips. |
 | `scales.x`, `scales.y` | Visible | Each axis has `display`, `grid`, and `ticks` settings. Ignored for pies. |
 | `layout.padding` | `20` | Outer padding in CSS pixels. |
-| `animation.duration` | `500` | Bar animation duration in milliseconds. Set `0` to disable; reduced-motion preferences disable it automatically. |
+| `animation.duration` | `500` | Animation duration for all chart types in milliseconds. Set `0` to disable; reduced-motion preferences disable it automatically. |
 | `tooltip.display` | `true` | Shows a canvas tooltip for the hovered mark. |
 | `tooltip.padding` | `8` | Tooltip padding in CSS pixels. |
 | `responsive` | `true` | Observes container resizing. |
 | `ariaLabel` | `'Chart'` | Prefix for the accessible description containing labels and values. |
+
+Bars and line points animate from the zero baseline on first render. Pie slices sweep into view. Data updates interpolate to the new geometry; line and pie updates interrupted mid-animation continue from their visible positions. Set `animation.duration` to `0` to render immediately.
 
 Each `font` object accepts `family`, `size`, `weight`, `style`, and `lineHeight`. Layer fonts inherit from the base font. Grid options include `display`, `drawBorder`, `borderColor`, `borderWidth`, `lineColor`, `lineWidth`, and `tickLength`. Tick options include `display`, `drawTicks`, `padding`, `font`, `color`, and `callback(value, index)`.
 
@@ -123,11 +124,11 @@ chart.setSettings({
 | `calculate()` | Recalculates layer bounds and data geometry. |
 | `render()` | Renders all layers at their final positions immediately. |
 | `draw()` | Composites the current layers. |
-| `run()` | Starts the current bar transition. |
+| `run()` | Starts the current chart transition. |
 | `resize()` | Measures the container and redraws, including when `responsive` is disabled. |
 | `dispose()` | Cancels animation, removes observers and listeners, and removes the generated canvas. Safe to call more than once. |
 
-`Chart.init(node, options)` reuses an existing component. Removal through fQuery disposes it automatically; call `dispose()` before removing a container through native DOM methods.
+`Chart.init(node, options)` returns the existing chart for a container or creates one. Calling the constructor twice on the same container throws; dispose the old chart before replacing it. Call `dispose()` before removing a container from the DOM to release its listeners and observer.
 
 ## Development
 
@@ -142,11 +143,15 @@ npm pack --dry-run
 
 `npm test` builds and tests Chromium, Firefox, and WebKit. `npm run test:browser -- --project=chromium` runs one browser against existing bundles. Coverage uses Chromium and reports source coverage in `coverage/`.
 
-`npm run dev` serves the project; open `/demo/index.html`. The demos use locally installed dependencies. Generated ESM and UMD bundles, minified variants, and source maps are tracked in `dist/`, matching the sibling projects.
+Open `demo/index.html` directly in a browser, or serve the repository with your preferred static server. The demos load the Frost UI 4 stylesheet from jsDelivr for presentation and the standalone chart bundle from `dist/`; no installed dependencies are needed to view them. Frost UI JavaScript and query are not used. Generated ESM and UMD bundles, minified variants, and source maps are tracked in `dist/`, matching the sibling projects.
+
+Chart renderers live in `src/charts/`; shared visual layers live in `src/layers/`. The public entry point and `Chart` class aliases remain unchanged.
 
 ## Migration from the unfinished prototype
 
-Use `UI.Chart` instead of the old standalone `window.Chart`, and load `frost-charts.js` instead of `frost-chart.js`. Replace FrostUI 1.x with the current `@fr0st/ui` and `@fr0st/query` peers. The package entry point now resolves to the ESM bundle.
+Keep using `new Chart(...)` in browser scripts, and load `frost-charts.js` instead of `frost-chart.js`. FrostUI, Core, and dom are no longer required. The package entry point resolves to the ESM bundle.
+
+If using the earlier completion baseline, replace `new UI.Chart(...)` or `fQuery(...).chart()` with `new Chart(...)` or `Chart.init(...)`. Charts no longer inherit from UI.BaseComponent or use UI data attributes; supply options directly and call `dispose()` before removing the container.
 
 The original layer responsibilities and `Chart.Bar`, `Chart.Line`, `Chart.Pie`, `Chart.Grid`, `Chart.Layer`, `Chart.Legend`, `Chart.Rect`, `Chart.Title`, and `Chart.Tooltip` class aliases remain. Internal underscore fields and methods are now private; direct access to prototype internals is unsupported.
 

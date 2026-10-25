@@ -2,24 +2,20 @@
  * @import { ChartData, ChartDataset } from './data.js';
  */
 
-import $ from '@fr0st/query';
-import { BaseComponent } from '@fr0st/ui';
-import BarChart from './bar-chart.js';
+import BarChart from './charts/bar.js';
+import LineChart from './charts/line.js';
+import PieChart from './charts/pie.js';
 import { normalizeData } from './data.js';
-import Grid from './grid.js';
-import LabelsX from './labels-x.js';
-import LabelsY from './labels-y.js';
-import Layer from './layer.js';
-import Legend from './legend.js';
-import LineChart from './line-chart.js';
+import Grid from './layers/grid.js';
+import LabelsX from './layers/labels-x.js';
+import LabelsY from './layers/labels-y.js';
+import Layer from './layers/layer.js';
+import Legend from './layers/legend.js';
+import Title from './layers/title.js';
+import Tooltip from './layers/tooltip.js';
 import { mergeOptions, normalizeOptions } from './options.js';
-import PieChart from './pie-chart.js';
 import Rect from './rect.js';
 import { createScale } from './scale.js';
-import Title from './title.js';
-import Tooltip from './tooltip.js';
-
-const window = $.getWindow();
 
 /**
  * @typedef {object} ChartOptions
@@ -30,7 +26,7 @@ const window = $.getWindow();
  * @property {object} [legend] The legend position, bounds, and labels.
  * @property {object} [scales] The x and y grid and tick settings.
  * @property {object} [layout] The outer chart padding.
- * @property {object} [animation] The bar animation duration in milliseconds.
+ * @property {object} [animation] The animation duration in milliseconds.
  * @property {object} [tooltip] The tooltip visibility, font, and colors.
  * @property {boolean} [responsive=true] Whether to observe container size changes.
  * @property {string} [ariaLabel='Chart'] The accessible chart description prefix.
@@ -38,9 +34,8 @@ const window = $.getWindow();
 
 /**
  * Composes canvas layers to render bar, line, and pie charts.
- * @augments {BaseComponent<ChartOptions>}
  */
-export default class Chart extends BaseComponent {
+export default class Chart {
     static Bar = BarChart;
     /**
      * @type {ChartOptions}
@@ -152,19 +147,35 @@ export default class Chart extends BaseComponent {
     static Title = Title;
     static Tooltip = Tooltip;
 
+    static #instances = new WeakMap();
+
     #canvas = null;
     #context = null;
     #data = null;
+    #eventsController = null;
     #frame = null;
     #height = 0;
     #inputOptions = null;
     #layers = {};
+    #node = null;
     #observer = null;
     #outerRect = null;
     #pixelRatio = 1;
+    #progress = 1;
     #scale = [0, 1];
     #settings = null;
     #width = 0;
+    #window = null;
+
+    /**
+     * Gets the existing chart for a container or creates one.
+     * @param {HTMLElement} node The chart container.
+     * @param {ChartOptions} [options] The options for a new chart.
+     * @returns {Chart} The existing or newly created chart.
+     */
+    static init(node, options) {
+        return Chart.#instances.get(node) || new this(node, options);
+    }
 
     /**
      * Creates a Chart in an HTML container.
@@ -173,41 +184,56 @@ export default class Chart extends BaseComponent {
      * @throws {TypeError} When the node, options, or data are invalid.
      */
     constructor(node, options) {
-        if (!$._isElement(node) || $.is(node, 'canvas, input, img, svg')) {
+        const view = node?.ownerDocument?.defaultView;
+
+        if (!view || !(node instanceof view.HTMLElement) || node.matches('canvas, input, img')) {
             throw new TypeError('Chart must be created on an HTML container element.');
         }
 
-        super(node, options);
+        if (Chart.#instances.has(node)) {
+            throw new Error('This container already has a chart. Use Chart.init() to reuse it.');
+        }
+
+        this.#node = node;
+        this.#window = view;
 
         try {
-            this.#inputOptions = mergeOptions(super.options);
+            this.#inputOptions = mergeOptions(this.constructor.defaults, options);
             this.#settings = normalizeOptions(mergeOptions(this.#inputOptions));
             this.#data = normalizeData(this.#settings.data, this.#settings.type);
 
-            this.#canvas = $.create('canvas', {
-                attributes: { role: 'img' },
-                style: {
-                    display: 'block',
-                    maxWidth: '100%',
-                },
-            });
+            this.#canvas = node.ownerDocument.createElement('canvas');
+            this.#canvas.setAttribute('role', 'img');
+            this.#canvas.style.display = 'block';
+            this.#canvas.style.maxWidth = '100%';
+
             this.#context = this.#canvas.getContext('2d');
 
             if (!this.#context) {
                 throw new Error('Chart requires a canvas 2D context.');
             }
 
-            $.append(this.node, this.#canvas);
+            this.node.append(this.#canvas);
 
             this.#build();
             this.#events();
             this.resize();
             this.#updateDescription();
             this.run();
+
+            Chart.#instances.set(node, this);
         } catch (error) {
             this.dispose();
             throw error;
         }
+    }
+
+    /**
+     * Gets the chart container.
+     * @returns {HTMLElement|null} The container, or null after disposal.
+     */
+    get node() {
+        return this.#node;
     }
 
     /**
@@ -286,18 +312,22 @@ export default class Chart extends BaseComponent {
         }
 
         this.#stop();
+        this.#eventsController?.abort();
         this.#observer?.disconnect();
         this.#canvas?.remove();
+
+        Chart.#instances.delete(this.#node);
 
         this.#canvas = null;
         this.#context = null;
         this.#data = null;
+        this.#eventsController = null;
         this.#inputOptions = null;
         this.#layers = {};
+        this.#node = null;
         this.#observer = null;
         this.#settings = null;
-
-        super.dispose();
+        this.#window = null;
     }
 
     /**
@@ -373,6 +403,7 @@ export default class Chart extends BaseComponent {
 
         this.#stop();
         this.#clearActive();
+        this.#progress = 1;
 
         for (const layer of Object.values(this.#layers)) {
             layer.render();
@@ -393,13 +424,13 @@ export default class Chart extends BaseComponent {
         // Otherwise an auto-height container grows on each observer callback.
         this.#canvas.style.display = 'none';
 
-        const style = window.getComputedStyle(this.node);
+        const style = this.#window.getComputedStyle(this.node);
         const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
         const verticalPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
         const width = Math.max(0, this.node.clientWidth - horizontalPadding);
         const availableHeight = Math.max(0, this.node.clientHeight - verticalPadding);
         const height = availableHeight || 300;
-        const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+        const pixelRatio = Math.max(1, this.#window.devicePixelRatio || 1);
 
         this.#canvas.style.display = 'block';
 
@@ -422,7 +453,7 @@ export default class Chart extends BaseComponent {
     }
 
     /**
-     * Animates the bar layer using elapsed time and a single pending frame.
+     * Animates the chart layer using elapsed time and a single pending frame.
      */
     run() {
         if (!this.node) {
@@ -431,15 +462,15 @@ export default class Chart extends BaseComponent {
 
         this.#stop();
 
-        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const reducedMotion = this.#window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         const duration = reducedMotion ? 0 : this.#settings.animation.duration;
 
-        if (this.#settings.type !== 'bar' || !duration || !this.getValues().length) {
+        if (!duration || !this.getValues().length) {
             this.render();
             return;
         }
 
-        const start = window.performance.now();
+        const start = this.#window.performance.now();
         const tick = (now) => {
             this.#frame = null;
 
@@ -450,18 +481,20 @@ export default class Chart extends BaseComponent {
             const elapsed = now - start;
             const progress = Math.min(1, Math.max(0, elapsed / duration));
 
+            this.#progress = progress;
             this.#layers.chart.render(progress);
             this.draw();
 
             if (progress < 1) {
-                this.#frame = window.requestAnimationFrame(tick);
+                this.#frame = this.#window.requestAnimationFrame(tick);
             }
         };
 
+        this.#progress = 0;
         this.#layers.chart.render(0);
         this.draw();
 
-        this.#frame = window.requestAnimationFrame(tick);
+        this.#frame = this.#window.requestAnimationFrame(tick);
     }
 
     /**
@@ -558,14 +591,18 @@ export default class Chart extends BaseComponent {
         this.#layers.chart.setActive(null);
         this.#layers.tooltip.setActive(null);
 
-        $.removeAttribute(this.#canvas, 'aria-description');
+        this.#canvas.removeAttribute('aria-description');
     }
 
     /**
-     * Registers pointer events and responsive sizing with the component lifecycle.
+     * Registers pointer events and responsive sizing until disposal.
      */
     #events() {
-        this.listen(this.#canvas, 'pointermove.ui.chart', (event) => {
+        this.#eventsController = new this.#window.AbortController();
+
+        const { signal } = this.#eventsController;
+
+        this.#canvas.addEventListener('pointermove', (event) => {
             const rect = this.#canvas.getBoundingClientRect();
 
             if (!rect.width || !rect.height) {
@@ -577,20 +614,20 @@ export default class Chart extends BaseComponent {
             const item = this.#layers.chart.hitTest(x, y);
 
             this.#setActive(item);
-        });
+        }, { signal });
 
-        this.listen(this.#canvas, 'pointerleave.ui.chart', () => {
+        this.#canvas.addEventListener('pointerleave', () => {
             this.#setActive(null);
-        });
+        }, { signal });
 
-        this.listen(window, 'resize.ui.chart', () => {
+        this.#window.addEventListener('resize', () => {
             if (this.#settings.responsive) {
                 this.resize();
             }
-        });
+        }, { signal });
 
-        if (window.ResizeObserver) {
-            this.#observer = new window.ResizeObserver(() => {
+        if (this.#window.ResizeObserver) {
+            this.#observer = new this.#window.ResizeObserver(() => {
                 if (this.#settings.responsive) {
                     this.resize();
                 }
@@ -610,13 +647,13 @@ export default class Chart extends BaseComponent {
         this.#layers.tooltip.render();
 
         if (this.#settings.type === 'pie') {
-            this.#layers.chart.render();
+            this.#layers.chart.render(this.#progress);
         }
 
         if (item && this.#settings.tooltip.display) {
-            $.setAttribute(this.#canvas, 'aria-description', `${item.label}. ${item.datasetLabel}: ${item.value}`);
+            this.#canvas.setAttribute('aria-description', `${item.label}. ${item.datasetLabel}: ${item.value}`);
         } else {
-            $.removeAttribute(this.#canvas, 'aria-description');
+            this.#canvas.removeAttribute('aria-description');
         }
 
         this.draw();
@@ -627,7 +664,7 @@ export default class Chart extends BaseComponent {
      */
     #stop() {
         if (this.#frame != null) {
-            window.cancelAnimationFrame(this.#frame);
+            this.#window.cancelAnimationFrame(this.#frame);
             this.#frame = null;
         }
     }
@@ -647,7 +684,7 @@ export default class Chart extends BaseComponent {
         const title = this.#settings.title.text || this.#settings.type;
         const description = `${this.#settings.ariaLabel}. ${title}. ${datasets.join('; ')}`;
 
-        $.setAttribute(this.#canvas, 'aria-label', description);
-        $.setText(this.#canvas, description);
+        this.#canvas.setAttribute('aria-label', description);
+        this.#canvas.textContent = description;
     }
 }

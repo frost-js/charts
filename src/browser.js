@@ -1,1 +1,1 @@
-export { default as Chart } from './index.js';
+export { default } from './index.js';

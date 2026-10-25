@@ -8,37 +8,23 @@ export default defineConfig(({ mode }) => {
             emptyOutDir: !isUmd,
             lib: {
                 entry: isUmd ? 'src/browser.js' : 'src/index.js',
-                name: 'UI',
+                name: 'Chart',
             },
             minify: false,
             outDir: 'dist',
             rolldownOptions: {
-                external: [
-                    '@fr0st/query',
-                    '@fr0st/ui',
-                ],
                 output: isUmd ? [
                     {
                         entryFileNames: 'frost-charts.js',
-                        extend: true,
                         format: 'umd',
-                        globals: {
-                            '@fr0st/query': 'fQuery',
-                            '@fr0st/ui': 'UI',
-                        },
                         minify: false,
-                        name: 'UI',
+                        name: 'Chart',
                     },
                     {
                         entryFileNames: 'frost-charts.min.js',
-                        extend: true,
                         format: 'umd',
-                        globals: {
-                            '@fr0st/query': 'fQuery',
-                            '@fr0st/ui': 'UI',
-                        },
                         minify: true,
-                        name: 'UI',
+                        name: 'Chart',
                     },
                 ] : [
                     {

@@ -1,8 +1,8 @@
 /**
- * @import Chart from './chart.js';
+ * @import Chart from '../chart.js';
  */
 /**
- * @import Rect from './rect.js';
+ * @import Rect from '../rect.js';
  */
 
 /**

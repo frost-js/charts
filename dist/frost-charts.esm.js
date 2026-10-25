@@ -1,6 +1,3 @@
-import { BaseComponent, initComponent } from "@fr0st/ui";
-import $ from "@fr0st/query";
-
 // src/data.js
 /**
 * @typedef {object} ChartDataset
@@ -96,12 +93,12 @@ function getColor(dataset, property, index) {
 	return colors[index % colors.length];
 }
 
-// src/layer.js
+// src/layers/layer.js
 /**
-* @import Chart from './chart.js';
+* @import Chart from '../chart.js';
 */
 /**
-* @import Rect from './rect.js';
+* @import Rect from '../rect.js';
 */
 /**
 * Provides layout and offscreen rendering shared by the chart layers.
@@ -332,7 +329,7 @@ function getScalePosition(value, minimum, maximum) {
 	return (value / magnitude - scaledMinimum) / (scaledMaximum - scaledMinimum);
 }
 
-// src/bar-chart.js
+// src/charts/bar.js
 /**
 * Renders grouped bars and interpolates between successive datasets.
 */
@@ -409,9 +406,222 @@ var BarChart = class extends Layer {
 	}
 };
 
-// src/grid.js
+// src/charts/line.js
 /**
-* @import Rect from './rect.js';
+* Renders connected data points on the Cartesian axes.
+*/
+var LineChart = class extends Layer {
+	#baseY = 0;
+	#oldPoints = [];
+	#points = [];
+	#renderedPoints = [];
+	/**
+	* Includes point radii and border widths beyond the plot boundaries.
+	*/
+	calculateCanvas() {
+		super.calculateCanvas();
+		const padding = this.chart.getData().reduce((size, dataset) => {
+			return Math.max(size, dataset.pointRadius + dataset.borderWidth / 2);
+		}, 0);
+		this.canvasRect.x -= padding;
+		this.canvasRect.y -= padding;
+		this.canvasRect.width += padding * 2;
+		this.canvasRect.height += padding * 2;
+	}
+	/**
+	* Calculates target points and retains the visible positions for transitions.
+	*/
+	data() {
+		const labels = this.chart.getLabels();
+		const datasets = this.chart.getData();
+		const min = this.chart.getScaleMin();
+		const max = this.chart.getScaleMax();
+		const step = labels.length > 1 ? this.rect.width / (labels.length - 1) : 0;
+		this.#oldPoints = this.#renderedPoints;
+		this.#points = [];
+		this.#baseY = this.rect.height * (1 - getScalePosition(0, min, max));
+		for (const [datasetIndex, dataset] of datasets.entries()) {
+			const points = [];
+			for (const [index, value] of dataset.data.entries()) points.push({
+				x: labels.length === 1 ? this.rect.width / 2 : index * step,
+				y: this.rect.height * (1 - getScalePosition(value, min, max)),
+				backgroundColor: getColor(dataset, "backgroundColor", index),
+				borderColor: getColor(dataset, "borderColor", index),
+				borderWidth: dataset.borderWidth,
+				pointRadius: dataset.pointRadius,
+				label: labels[index],
+				datasetLabel: dataset.label,
+				datasetIndex,
+				index,
+				value
+			});
+			this.#points.push(points);
+		}
+	}
+	/**
+	* Interpolates series and registers hit regions at their visible positions.
+	* @param {number} [progress=1] The elapsed animation fraction.
+	*/
+	render(progress = 1) {
+		super.render();
+		const offsetX = this.rect.x - this.canvasRect.x;
+		const offsetY = this.rect.y - this.canvasRect.y;
+		const datasetCount = Math.max(this.#points.length, this.#oldPoints.length);
+		this.#renderedPoints = [];
+		for (let datasetIndex = 0; datasetIndex < datasetCount; datasetIndex++) {
+			const targets = this.#points[datasetIndex] || [];
+			const oldPoints = this.#oldPoints[datasetIndex] || [];
+			const count = Math.max(targets.length, oldPoints.length);
+			const rendered = [];
+			let previous = null;
+			for (let index = 0; index < count; index++) {
+				const target = targets[index];
+				const old = oldPoints[index];
+				const next = target || {
+					...old,
+					y: this.#baseY,
+					pointRadius: 0
+				};
+				const start = old || {
+					...next,
+					y: this.#baseY,
+					pointRadius: 0
+				};
+				const x = start.x + (next.x - start.x) * progress;
+				const y = start.y + (next.y - start.y) * progress;
+				const radius = start.pointRadius + (next.pointRadius - start.pointRadius) * progress;
+				if (!target && progress === 1) continue;
+				rendered.push({
+					...next,
+					x,
+					y,
+					pointRadius: radius
+				});
+				const point = new Path2D();
+				const hit = new Path2D();
+				this.context.strokeStyle = next.borderColor;
+				this.context.fillStyle = next.backgroundColor;
+				if (previous && next.borderWidth) {
+					this.context.beginPath();
+					this.context.moveTo(previous.x + offsetX, previous.y + offsetY);
+					this.context.lineTo(x + offsetX, y + offsetY);
+					this.context.lineWidth = next.borderWidth;
+					this.context.stroke();
+				}
+				point.arc(x + offsetX, y + offsetY, radius, 0, Math.PI * 2);
+				this.context.fill(point);
+				if (next.borderWidth) {
+					this.context.lineWidth = next.borderWidth;
+					this.context.stroke(point);
+				}
+				if (target) {
+					hit.arc(x + offsetX, y + offsetY, Math.max(6, radius), 0, Math.PI * 2);
+					this.addHitRegion(hit, target);
+				}
+				previous = {
+					x,
+					y
+				};
+			}
+			this.#renderedPoints.push(rendered);
+		}
+	}
+};
+
+// src/charts/pie.js
+/**
+* Renders the original combined pie using all dataset values.
+*/
+var PieChart = class extends Layer {
+	#oldSlices = [];
+	#renderedSlices = [];
+	#slices = [];
+	/**
+	* Calculates slice angles and retains the visible angles for transitions.
+	*/
+	data() {
+		const values = this.chart.getValues();
+		const largest = values.reduce((max, value) => Math.max(max, value), 0);
+		const labels = this.chart.getLabels();
+		const total = largest ? values.reduce((sum, value) => sum + value / largest, 0) : 0;
+		this.#oldSlices = this.#renderedSlices;
+		this.#slices = [];
+		for (const [datasetIndex, dataset] of this.chart.getData().entries()) {
+			const slices = [];
+			for (const [index, value] of dataset.data.entries()) slices.push({
+				angle: total ? value / largest / total * Math.PI * 2 : 0,
+				backgroundColor: getColor(dataset, "backgroundColor", index),
+				borderColor: getColor(dataset, "borderColor", index),
+				borderWidth: dataset.borderWidth,
+				label: labels[index],
+				datasetLabel: dataset.label,
+				datasetIndex,
+				index,
+				value
+			});
+			this.#slices.push(slices);
+		}
+	}
+	/**
+	* Interpolates slice angles with an outward offset and hover feedback.
+	* @param {number} [progress=1] The elapsed animation fraction.
+	*/
+	render(progress = 1) {
+		super.render();
+		const spacing = Math.min(5, this.rect.width / 4, this.rect.height / 4);
+		const radius = Math.max(0, Math.min(this.rect.width, this.rect.height) / 2 - spacing);
+		const datasetCount = Math.max(this.#slices.length, this.#oldSlices.length);
+		let start = 0;
+		this.#renderedSlices = [];
+		for (let datasetIndex = 0; datasetIndex < datasetCount; datasetIndex++) {
+			const targets = this.#slices[datasetIndex] || [];
+			const oldSlices = this.#oldSlices[datasetIndex] || [];
+			const count = Math.max(targets.length, oldSlices.length);
+			const rendered = [];
+			for (let index = 0; index < count; index++) {
+				const target = targets[index];
+				const old = oldSlices[index];
+				const next = target || {
+					...old,
+					angle: 0
+				};
+				const oldAngle = old?.angle || 0;
+				const angle = oldAngle + (next.angle - oldAngle) * progress;
+				if (!target && progress === 1) continue;
+				rendered.push({
+					...next,
+					angle
+				});
+				if (!angle) continue;
+				const middle = start + angle / 2;
+				const x = this.rect.width / 2 + Math.cos(middle) * spacing;
+				const y = this.rect.height / 2 + Math.sin(middle) * spacing;
+				const path = new Path2D();
+				path.moveTo(x, y);
+				path.arc(x, y, radius, start, start + angle);
+				path.closePath();
+				this.context.fillStyle = next.backgroundColor;
+				this.context.fill(path);
+				if (next.borderWidth) {
+					this.context.strokeStyle = next.borderColor;
+					this.context.lineWidth = next.borderWidth;
+					this.context.stroke(path);
+				}
+				if (this.active?.datasetIndex === datasetIndex && this.active.index === index) {
+					this.context.fillStyle = "rgba(255,255,255,.3)";
+					this.context.fill(path);
+				}
+				if (target && target.angle) this.addHitRegion(path, target);
+				start += angle;
+			}
+			this.#renderedSlices.push(rendered);
+		}
+	}
+};
+
+// src/layers/grid.js
+/**
+* @import Rect from '../rect.js';
 */
 /**
 * Draws grid lines, axis borders, and ticks behind the data layer.
@@ -636,9 +846,9 @@ function wrapLines(context, text, maxWidth) {
 	return lines;
 }
 
-// src/labels-x.js
+// src/layers/labels-x.js
 /**
-* @import Rect from './rect.js';
+* @import Rect from '../rect.js';
 */
 /**
 * Lays out and renders category labels below the plot.
@@ -714,9 +924,9 @@ var LabelsX = class extends Layer {
 	}
 };
 
-// src/labels-y.js
+// src/layers/labels-y.js
 /**
-* @import Rect from './rect.js';
+* @import Rect from '../rect.js';
 */
 /**
 * Lays out and renders numeric labels beside the plot.
@@ -784,9 +994,9 @@ var LabelsY = class extends Layer {
 	}
 };
 
-// src/legend.js
+// src/layers/legend.js
 /**
-* @import Rect from './rect.js';
+* @import Rect from '../rect.js';
 */
 /**
 * Lays out dataset keys in horizontal rows or vertical columns.
@@ -1095,315 +1305,9 @@ var Legend = class extends Layer {
 	}
 };
 
-// src/line-chart.js
+// src/layers/title.js
 /**
-* Renders connected data points on the Cartesian axes.
-*/
-var LineChart = class extends Layer {
-	/**
-	* Includes point radii and border widths beyond the plot boundaries.
-	*/
-	calculateCanvas() {
-		super.calculateCanvas();
-		const padding = this.chart.getData().reduce((size, dataset) => {
-			return Math.max(size, dataset.pointRadius + dataset.borderWidth / 2);
-		}, 0);
-		this.canvasRect.x -= padding;
-		this.canvasRect.y -= padding;
-		this.canvasRect.width += padding * 2;
-		this.canvasRect.height += padding * 2;
-	}
-	/**
-	* Renders each series and registers its point hit regions.
-	*/
-	render() {
-		super.render();
-		const labels = this.chart.getLabels();
-		const datasets = this.chart.getData();
-		const min = this.chart.getScaleMin();
-		const max = this.chart.getScaleMax();
-		const step = labels.length > 1 ? this.rect.width / (labels.length - 1) : 0;
-		const offsetX = this.rect.x - this.canvasRect.x;
-		const offsetY = this.rect.y - this.canvasRect.y;
-		for (const [datasetIndex, dataset] of datasets.entries()) {
-			let previous = null;
-			for (const [index, value] of dataset.data.entries()) {
-				const x = (labels.length === 1 ? this.rect.width / 2 : index * step) + offsetX;
-				const y = this.rect.height * (1 - getScalePosition(value, min, max)) + offsetY;
-				const point = new Path2D();
-				const hit = new Path2D();
-				this.context.strokeStyle = getColor(dataset, "borderColor", index);
-				this.context.fillStyle = getColor(dataset, "backgroundColor", index);
-				if (previous && dataset.borderWidth) {
-					this.context.beginPath();
-					this.context.moveTo(previous.x, previous.y);
-					this.context.lineTo(x, y);
-					this.context.lineWidth = dataset.borderWidth;
-					this.context.stroke();
-				}
-				point.arc(x, y, dataset.pointRadius, 0, Math.PI * 2);
-				this.context.fill(point);
-				if (dataset.borderWidth) {
-					this.context.lineWidth = dataset.borderWidth;
-					this.context.stroke(point);
-				}
-				hit.arc(x, y, Math.max(6, dataset.pointRadius), 0, Math.PI * 2);
-				this.addHitRegion(hit, {
-					label: labels[index],
-					datasetLabel: dataset.label,
-					datasetIndex,
-					index,
-					value
-				});
-				previous = {
-					x,
-					y
-				};
-			}
-		}
-	}
-};
-
-// src/options.js
-/**
-* Merges option objects, cloning arrays instead of merging their entries.
-* @param {...object} sources The option sources in precedence order.
-* @returns {object} The merged options.
-*/
-function mergeOptions(...sources) {
-	const options = {};
-	for (const source of sources) {
-		if (source == null) continue;
-		for (const [key, value] of Object.entries(source)) {
-			if ([
-				"__proto__",
-				"constructor",
-				"prototype"
-			].includes(key)) continue;
-			if (Array.isArray(value)) options[key] = value.map((item) => {
-				return item && typeof item === "object" ? mergeOptions(item) : item;
-			});
-			else if (value && typeof value === "object") options[key] = mergeOptions(options[key], value);
-			else options[key] = value;
-		}
-	}
-	return options;
-}
-/**
-* Validates a nonnegative numeric option.
-* @param {number} value The supplied value.
-* @param {string} name The option path used in the error message.
-*/
-function validateDimension(value, name) {
-	if (!Number.isFinite(value) || value < 0) throw new RangeError(`${name} must be a finite, nonnegative number.`);
-}
-/**
-* Validates the resolved font used by a chart layer.
-* @param {object} font The font settings.
-* @param {string} name The option path used in the error message.
-*/
-function validateFont(font, name) {
-	if (!Number.isFinite(font.size) || font.size <= 0) throw new RangeError(`${name}.size must be a positive, finite number.`);
-	if (!Number.isFinite(font.lineHeight) || font.lineHeight <= 0) throw new RangeError(`${name}.lineHeight must be a positive, finite number.`);
-	if (typeof font.family !== "string" || !font.family.trim()) throw new TypeError(`${name}.family must be a nonempty string.`);
-}
-/**
-* Validates the layout settings shared by titles and legends.
-* @param {object} settings The layer settings.
-* @param {string} name The option path used in the error message.
-*/
-function validatePosition(settings, name) {
-	const positions = [
-		"top",
-		"right",
-		"bottom",
-		"left"
-	];
-	const alignments = [
-		"start",
-		"center",
-		"end",
-		"left",
-		"right"
-	];
-	if (!positions.includes(settings.position)) throw new TypeError(`${name}.position must be top, right, bottom, or left.`);
-	if (!alignments.includes(settings.align)) throw new TypeError(`${name}.align must be start, center, end, left, or right.`);
-}
-/**
-* Validates an axis and resolves its tick font.
-* @param {object} axis The axis settings.
-* @param {object} font The base chart font.
-* @param {string} name The option path used in validation errors.
-*/
-function validateAxis(axis, font, name) {
-	if (!axis?.grid || !axis.ticks) throw new TypeError(`${name} requires grid and ticks settings.`);
-	validateDimension(axis.grid.tickLength, `${name}.grid.tickLength`);
-	validateDimension(axis.grid.lineWidth, `${name}.grid.lineWidth`);
-	validateDimension(axis.grid.borderWidth, `${name}.grid.borderWidth`);
-	validateDimension(axis.ticks.padding, `${name}.ticks.padding`);
-	const callback = axis.ticks.callback;
-	if (callback != null && typeof callback !== "function") throw new TypeError(`${name}.ticks.callback must be a function.`);
-	axis.ticks.font = mergeOptions(font, axis.ticks.font);
-	validateFont(axis.ticks.font, `${name}.ticks.font`);
-}
-/**
-* Validates merged options and resolves the fonts inherited by each layer.
-* @param {object} options The merged chart options.
-* @returns {object} The validated options with resolved fonts.
-*/
-function normalizeOptions(options) {
-	if (![
-		"bar",
-		"line",
-		"pie"
-	].includes(options.type)) throw new TypeError("Chart type must be bar, line, or pie.");
-	if (!options.font || !options.title || !options.legend?.labels || !options.tooltip) throw new TypeError("Chart options require font, title, legend, and tooltip settings.");
-	validateFont(options.font, "font");
-	validateDimension(options.layout?.padding, "layout.padding");
-	validateDimension(options.animation?.duration, "animation.duration");
-	validatePosition(options.title, "title");
-	validateDimension(options.title.padding, "title.padding");
-	options.title.font = mergeOptions(options.font, options.title.font);
-	validateFont(options.title.font, "title.font");
-	validatePosition(options.legend, "legend");
-	validateDimension(options.legend.labels.padding, "legend.labels.padding");
-	validateDimension(options.legend.labels.boxWidth, "legend.labels.boxWidth");
-	validateDimension(options.legend.labels.boxHeight, "legend.labels.boxHeight");
-	options.legend.labels.font = mergeOptions(options.font, options.legend.labels.font);
-	validateFont(options.legend.labels.font, "legend.labels.font");
-	if (options.legend.maxWidth != null) validateDimension(options.legend.maxWidth, "legend.maxWidth");
-	if (options.legend.maxHeight != null) validateDimension(options.legend.maxHeight, "legend.maxHeight");
-	validateAxis(options.scales?.x, options.font, "scales.x");
-	validateAxis(options.scales?.y, options.font, "scales.y");
-	validateDimension(options.tooltip.padding, "tooltip.padding");
-	options.tooltip.font = mergeOptions(options.font, options.tooltip.font);
-	validateFont(options.tooltip.font, "tooltip.font");
-	return options;
-}
-
-// src/pie-chart.js
-/**
-* Renders the original combined pie using all dataset values.
-*/
-var PieChart = class extends Layer {
-	/**
-	* Renders colored slices with a small outward offset and hover feedback.
-	*/
-	render() {
-		super.render();
-		const values = this.chart.getValues();
-		const largest = values.reduce((max, value) => Math.max(max, value), 0);
-		if (!largest) return;
-		const total = values.reduce((sum, value) => sum + value / largest, 0);
-		const labels = this.chart.getLabels();
-		const spacing = Math.min(5, this.rect.width / 4, this.rect.height / 4);
-		const radius = Math.max(0, Math.min(this.rect.width, this.rect.height) / 2 - spacing);
-		let start = 0;
-		for (const [datasetIndex, dataset] of this.chart.getData().entries()) for (const [index, value] of dataset.data.entries()) {
-			const angle = value / largest / total * Math.PI * 2;
-			const middle = start + angle / 2;
-			const x = this.rect.width / 2 + Math.cos(middle) * spacing;
-			const y = this.rect.height / 2 + Math.sin(middle) * spacing;
-			const path = new Path2D();
-			if (!angle) continue;
-			path.moveTo(x, y);
-			path.arc(x, y, radius, start, start + angle);
-			path.closePath();
-			this.context.fillStyle = getColor(dataset, "backgroundColor", index);
-			this.context.fill(path);
-			if (dataset.borderWidth) {
-				this.context.strokeStyle = getColor(dataset, "borderColor", index);
-				this.context.lineWidth = dataset.borderWidth;
-				this.context.stroke(path);
-			}
-			if (this.active?.datasetIndex === datasetIndex && this.active.index === index) {
-				this.context.fillStyle = "rgba(255,255,255,.3)";
-				this.context.fill(path);
-			}
-			this.addHitRegion(path, {
-				label: labels[index],
-				datasetLabel: dataset.label,
-				datasetIndex,
-				index,
-				value
-			});
-			start += angle;
-		}
-	}
-};
-
-// src/rect.js
-/**
-* Stores a rectangle used during chart layout.
-*/
-var Rect = class Rect {
-	/**
-	* Creates a Rect.
-	* @param {number} x The X position.
-	* @param {number} y The Y position.
-	* @param {number} width The width.
-	* @param {number} height The height.
-	*/
-	constructor(x = 0, y = 0, width = 0, height = 0) {
-		this.x = x;
-		this.y = y;
-		this.width = width;
-		this.height = height;
-	}
-	/**
-	* Gets the bottom position.
-	* @returns {number} The bottom position.
-	*/
-	get bottom() {
-		return this.y + this.height;
-	}
-	/**
-	* Gets the center X position.
-	* @returns {number} The center X position.
-	*/
-	get centerX() {
-		return this.x + this.width / 2;
-	}
-	/**
-	* Gets the center Y position.
-	* @returns {number} The center Y position.
-	*/
-	get centerY() {
-		return this.y + this.height / 2;
-	}
-	/**
-	* Gets the left position.
-	* @returns {number} The left position.
-	*/
-	get left() {
-		return this.x;
-	}
-	/**
-	* Gets the right position.
-	* @returns {number} The right position.
-	*/
-	get right() {
-		return this.x + this.width;
-	}
-	/**
-	* Gets the top position.
-	* @returns {number} The top position.
-	*/
-	get top() {
-		return this.y;
-	}
-	/**
-	* Creates an independent copy of the rectangle.
-	* @returns {Rect} A new Rect.
-	*/
-	clone() {
-		return new Rect(this.x, this.y, this.width, this.height);
-	}
-};
-
-// src/title.js
-/**
-* @import Rect from './rect.js';
+* @import Rect from '../rect.js';
 */
 /**
 * Lays out and renders the chart title along any edge.
@@ -1526,7 +1430,7 @@ var Title = class extends Layer {
 	}
 };
 
-// src/tooltip.js
+// src/layers/tooltip.js
 /**
 * Renders the hovered item's label and value above the other chart layers.
 */
@@ -1567,11 +1471,196 @@ var Tooltip = class extends Layer {
 	}
 };
 
+// src/options.js
+/**
+* Merges option objects, cloning arrays instead of merging their entries.
+* @param {...object} sources The option sources in precedence order.
+* @returns {object} The merged options.
+*/
+function mergeOptions(...sources) {
+	const options = {};
+	for (const source of sources) {
+		if (source == null) continue;
+		for (const [key, value] of Object.entries(source)) {
+			if ([
+				"__proto__",
+				"constructor",
+				"prototype"
+			].includes(key)) continue;
+			if (Array.isArray(value)) options[key] = value.map((item) => {
+				return item && typeof item === "object" ? mergeOptions(item) : item;
+			});
+			else if (value && typeof value === "object") options[key] = mergeOptions(options[key], value);
+			else options[key] = value;
+		}
+	}
+	return options;
+}
+/**
+* Validates a nonnegative numeric option.
+* @param {number} value The supplied value.
+* @param {string} name The option path used in the error message.
+*/
+function validateDimension(value, name) {
+	if (!Number.isFinite(value) || value < 0) throw new RangeError(`${name} must be a finite, nonnegative number.`);
+}
+/**
+* Validates the resolved font used by a chart layer.
+* @param {object} font The font settings.
+* @param {string} name The option path used in the error message.
+*/
+function validateFont(font, name) {
+	if (!Number.isFinite(font.size) || font.size <= 0) throw new RangeError(`${name}.size must be a positive, finite number.`);
+	if (!Number.isFinite(font.lineHeight) || font.lineHeight <= 0) throw new RangeError(`${name}.lineHeight must be a positive, finite number.`);
+	if (typeof font.family !== "string" || !font.family.trim()) throw new TypeError(`${name}.family must be a nonempty string.`);
+}
+/**
+* Validates the layout settings shared by titles and legends.
+* @param {object} settings The layer settings.
+* @param {string} name The option path used in the error message.
+*/
+function validatePosition(settings, name) {
+	const positions = [
+		"top",
+		"right",
+		"bottom",
+		"left"
+	];
+	const alignments = [
+		"start",
+		"center",
+		"end",
+		"left",
+		"right"
+	];
+	if (!positions.includes(settings.position)) throw new TypeError(`${name}.position must be top, right, bottom, or left.`);
+	if (!alignments.includes(settings.align)) throw new TypeError(`${name}.align must be start, center, end, left, or right.`);
+}
+/**
+* Validates an axis and resolves its tick font.
+* @param {object} axis The axis settings.
+* @param {object} font The base chart font.
+* @param {string} name The option path used in validation errors.
+*/
+function validateAxis(axis, font, name) {
+	if (!axis?.grid || !axis.ticks) throw new TypeError(`${name} requires grid and ticks settings.`);
+	validateDimension(axis.grid.tickLength, `${name}.grid.tickLength`);
+	validateDimension(axis.grid.lineWidth, `${name}.grid.lineWidth`);
+	validateDimension(axis.grid.borderWidth, `${name}.grid.borderWidth`);
+	validateDimension(axis.ticks.padding, `${name}.ticks.padding`);
+	const callback = axis.ticks.callback;
+	if (callback != null && typeof callback !== "function") throw new TypeError(`${name}.ticks.callback must be a function.`);
+	axis.ticks.font = mergeOptions(font, axis.ticks.font);
+	validateFont(axis.ticks.font, `${name}.ticks.font`);
+}
+/**
+* Validates merged options and resolves the fonts inherited by each layer.
+* @param {object} options The merged chart options.
+* @returns {object} The validated options with resolved fonts.
+*/
+function normalizeOptions(options) {
+	if (![
+		"bar",
+		"line",
+		"pie"
+	].includes(options.type)) throw new TypeError("Chart type must be bar, line, or pie.");
+	if (!options.font || !options.title || !options.legend?.labels || !options.tooltip) throw new TypeError("Chart options require font, title, legend, and tooltip settings.");
+	validateFont(options.font, "font");
+	validateDimension(options.layout?.padding, "layout.padding");
+	validateDimension(options.animation?.duration, "animation.duration");
+	validatePosition(options.title, "title");
+	validateDimension(options.title.padding, "title.padding");
+	options.title.font = mergeOptions(options.font, options.title.font);
+	validateFont(options.title.font, "title.font");
+	validatePosition(options.legend, "legend");
+	validateDimension(options.legend.labels.padding, "legend.labels.padding");
+	validateDimension(options.legend.labels.boxWidth, "legend.labels.boxWidth");
+	validateDimension(options.legend.labels.boxHeight, "legend.labels.boxHeight");
+	options.legend.labels.font = mergeOptions(options.font, options.legend.labels.font);
+	validateFont(options.legend.labels.font, "legend.labels.font");
+	if (options.legend.maxWidth != null) validateDimension(options.legend.maxWidth, "legend.maxWidth");
+	if (options.legend.maxHeight != null) validateDimension(options.legend.maxHeight, "legend.maxHeight");
+	validateAxis(options.scales?.x, options.font, "scales.x");
+	validateAxis(options.scales?.y, options.font, "scales.y");
+	validateDimension(options.tooltip.padding, "tooltip.padding");
+	options.tooltip.font = mergeOptions(options.font, options.tooltip.font);
+	validateFont(options.tooltip.font, "tooltip.font");
+	return options;
+}
+
+// src/rect.js
+/**
+* Stores a rectangle used during chart layout.
+*/
+var Rect = class Rect {
+	/**
+	* Creates a Rect.
+	* @param {number} x The X position.
+	* @param {number} y The Y position.
+	* @param {number} width The width.
+	* @param {number} height The height.
+	*/
+	constructor(x = 0, y = 0, width = 0, height = 0) {
+		this.x = x;
+		this.y = y;
+		this.width = width;
+		this.height = height;
+	}
+	/**
+	* Gets the bottom position.
+	* @returns {number} The bottom position.
+	*/
+	get bottom() {
+		return this.y + this.height;
+	}
+	/**
+	* Gets the center X position.
+	* @returns {number} The center X position.
+	*/
+	get centerX() {
+		return this.x + this.width / 2;
+	}
+	/**
+	* Gets the center Y position.
+	* @returns {number} The center Y position.
+	*/
+	get centerY() {
+		return this.y + this.height / 2;
+	}
+	/**
+	* Gets the left position.
+	* @returns {number} The left position.
+	*/
+	get left() {
+		return this.x;
+	}
+	/**
+	* Gets the right position.
+	* @returns {number} The right position.
+	*/
+	get right() {
+		return this.x + this.width;
+	}
+	/**
+	* Gets the top position.
+	* @returns {number} The top position.
+	*/
+	get top() {
+		return this.y;
+	}
+	/**
+	* Creates an independent copy of the rectangle.
+	* @returns {Rect} A new Rect.
+	*/
+	clone() {
+		return new Rect(this.x, this.y, this.width, this.height);
+	}
+};
+
 // src/chart.js
 /**
 * @import { ChartData, ChartDataset } from './data.js';
 */
-var window = $.getWindow();
 /**
 * @typedef {object} ChartOptions
 * @property {'bar'|'line'|'pie'} [type='bar'] The chart type.
@@ -1581,16 +1670,15 @@ var window = $.getWindow();
 * @property {object} [legend] The legend position, bounds, and labels.
 * @property {object} [scales] The x and y grid and tick settings.
 * @property {object} [layout] The outer chart padding.
-* @property {object} [animation] The bar animation duration in milliseconds.
+* @property {object} [animation] The animation duration in milliseconds.
 * @property {object} [tooltip] The tooltip visibility, font, and colors.
 * @property {boolean} [responsive=true] Whether to observe container size changes.
 * @property {string} [ariaLabel='Chart'] The accessible chart description prefix.
 */
 /**
 * Composes canvas layers to render bar, line, and pie charts.
-* @augments {BaseComponent<ChartOptions>}
 */
-var Chart = class extends BaseComponent {
+var Chart = class Chart {
 	static Bar = BarChart;
 	/**
 	* @type {ChartOptions}
@@ -1697,19 +1785,33 @@ var Chart = class extends BaseComponent {
 	static Rect = Rect;
 	static Title = Title;
 	static Tooltip = Tooltip;
+	static #instances = /* @__PURE__ */ new WeakMap();
 	#canvas = null;
 	#context = null;
 	#data = null;
+	#eventsController = null;
 	#frame = null;
 	#height = 0;
 	#inputOptions = null;
 	#layers = {};
+	#node = null;
 	#observer = null;
 	#outerRect = null;
 	#pixelRatio = 1;
+	#progress = 1;
 	#scale = [0, 1];
 	#settings = null;
 	#width = 0;
+	#window = null;
+	/**
+	* Gets the existing chart for a container or creates one.
+	* @param {HTMLElement} node The chart container.
+	* @param {ChartOptions} [options] The options for a new chart.
+	* @returns {Chart} The existing or newly created chart.
+	*/
+	static init(node, options) {
+		return Chart.#instances.get(node) || new this(node, options);
+	}
 	/**
 	* Creates a Chart in an HTML container.
 	* @param {HTMLElement} node The chart container.
@@ -1717,31 +1819,39 @@ var Chart = class extends BaseComponent {
 	* @throws {TypeError} When the node, options, or data are invalid.
 	*/
 	constructor(node, options) {
-		if (!$._isElement(node) || $.is(node, "canvas, input, img, svg")) throw new TypeError("Chart must be created on an HTML container element.");
-		super(node, options);
+		const view = node?.ownerDocument?.defaultView;
+		if (!view || !(node instanceof view.HTMLElement) || node.matches("canvas, input, img")) throw new TypeError("Chart must be created on an HTML container element.");
+		if (Chart.#instances.has(node)) throw new Error("This container already has a chart. Use Chart.init() to reuse it.");
+		this.#node = node;
+		this.#window = view;
 		try {
-			this.#inputOptions = mergeOptions(super.options);
+			this.#inputOptions = mergeOptions(this.constructor.defaults, options);
 			this.#settings = normalizeOptions(mergeOptions(this.#inputOptions));
 			this.#data = normalizeData(this.#settings.data, this.#settings.type);
-			this.#canvas = $.create("canvas", {
-				attributes: { role: "img" },
-				style: {
-					display: "block",
-					maxWidth: "100%"
-				}
-			});
+			this.#canvas = node.ownerDocument.createElement("canvas");
+			this.#canvas.setAttribute("role", "img");
+			this.#canvas.style.display = "block";
+			this.#canvas.style.maxWidth = "100%";
 			this.#context = this.#canvas.getContext("2d");
 			if (!this.#context) throw new Error("Chart requires a canvas 2D context.");
-			$.append(this.node, this.#canvas);
+			this.node.append(this.#canvas);
 			this.#build();
 			this.#events();
 			this.resize();
 			this.#updateDescription();
 			this.run();
+			Chart.#instances.set(node, this);
 		} catch (error) {
 			this.dispose();
 			throw error;
 		}
+	}
+	/**
+	* Gets the chart container.
+	* @returns {HTMLElement|null} The container, or null after disposal.
+	*/
+	get node() {
+		return this.#node;
 	}
 	/**
 	* Gets a copy of the effective options and current data.
@@ -1793,16 +1903,20 @@ var Chart = class extends BaseComponent {
 	dispose() {
 		if (!this.node) return;
 		this.#stop();
+		this.#eventsController?.abort();
 		this.#observer?.disconnect();
 		this.#canvas?.remove();
+		Chart.#instances.delete(this.#node);
 		this.#canvas = null;
 		this.#context = null;
 		this.#data = null;
+		this.#eventsController = null;
 		this.#inputOptions = null;
 		this.#layers = {};
+		this.#node = null;
 		this.#observer = null;
 		this.#settings = null;
-		super.dispose();
+		this.#window = null;
 	}
 	/**
 	* Composites the rendered layers onto the visible canvas.
@@ -1861,6 +1975,7 @@ var Chart = class extends BaseComponent {
 		if (!this.node) return;
 		this.#stop();
 		this.#clearActive();
+		this.#progress = 1;
 		for (const layer of Object.values(this.#layers)) layer.render();
 		this.draw();
 	}
@@ -1870,12 +1985,12 @@ var Chart = class extends BaseComponent {
 	resize() {
 		if (!this.node) return;
 		this.#canvas.style.display = "none";
-		const style = window.getComputedStyle(this.node);
+		const style = this.#window.getComputedStyle(this.node);
 		const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
 		const verticalPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
 		const width = Math.max(0, this.node.clientWidth - horizontalPadding);
 		const height = Math.max(0, this.node.clientHeight - verticalPadding) || 300;
-		const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+		const pixelRatio = Math.max(1, this.#window.devicePixelRatio || 1);
 		this.#canvas.style.display = "block";
 		if (width === this.#width && height === this.#height && pixelRatio === this.#pixelRatio) return;
 		this.#width = width;
@@ -1890,29 +2005,31 @@ var Chart = class extends BaseComponent {
 		this.render();
 	}
 	/**
-	* Animates the bar layer using elapsed time and a single pending frame.
+	* Animates the chart layer using elapsed time and a single pending frame.
 	*/
 	run() {
 		if (!this.node) return;
 		this.#stop();
-		const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : this.#settings.animation.duration;
-		if (this.#settings.type !== "bar" || !duration || !this.getValues().length) {
+		const duration = this.#window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : this.#settings.animation.duration;
+		if (!duration || !this.getValues().length) {
 			this.render();
 			return;
 		}
-		const start = window.performance.now();
+		const start = this.#window.performance.now();
 		const tick = (now) => {
 			this.#frame = null;
 			if (!this.node) return;
 			const elapsed = now - start;
 			const progress = Math.min(1, Math.max(0, elapsed / duration));
+			this.#progress = progress;
 			this.#layers.chart.render(progress);
 			this.draw();
-			if (progress < 1) this.#frame = window.requestAnimationFrame(tick);
+			if (progress < 1) this.#frame = this.#window.requestAnimationFrame(tick);
 		};
+		this.#progress = 0;
 		this.#layers.chart.render(0);
 		this.draw();
-		this.#frame = window.requestAnimationFrame(tick);
+		this.#frame = this.#window.requestAnimationFrame(tick);
 	}
 	/**
 	* Replaces chart data after validating the entire update.
@@ -1981,28 +2098,30 @@ var Chart = class extends BaseComponent {
 	#clearActive() {
 		this.#layers.chart.setActive(null);
 		this.#layers.tooltip.setActive(null);
-		$.removeAttribute(this.#canvas, "aria-description");
+		this.#canvas.removeAttribute("aria-description");
 	}
 	/**
-	* Registers pointer events and responsive sizing with the component lifecycle.
+	* Registers pointer events and responsive sizing until disposal.
 	*/
 	#events() {
-		this.listen(this.#canvas, "pointermove.ui.chart", (event) => {
+		this.#eventsController = new this.#window.AbortController();
+		const { signal } = this.#eventsController;
+		this.#canvas.addEventListener("pointermove", (event) => {
 			const rect = this.#canvas.getBoundingClientRect();
 			if (!rect.width || !rect.height) return;
 			const x = (event.clientX - rect.left) * this.#width / rect.width;
 			const y = (event.clientY - rect.top) * this.#height / rect.height;
 			const item = this.#layers.chart.hitTest(x, y);
 			this.#setActive(item);
-		});
-		this.listen(this.#canvas, "pointerleave.ui.chart", () => {
+		}, { signal });
+		this.#canvas.addEventListener("pointerleave", () => {
 			this.#setActive(null);
-		});
-		this.listen(window, "resize.ui.chart", () => {
+		}, { signal });
+		this.#window.addEventListener("resize", () => {
 			if (this.#settings.responsive) this.resize();
-		});
-		if (window.ResizeObserver) {
-			this.#observer = new window.ResizeObserver(() => {
+		}, { signal });
+		if (this.#window.ResizeObserver) {
+			this.#observer = new this.#window.ResizeObserver(() => {
 				if (this.#settings.responsive) this.resize();
 			});
 			this.#observer.observe(this.node);
@@ -2016,9 +2135,9 @@ var Chart = class extends BaseComponent {
 		this.#layers.chart.setActive(item);
 		this.#layers.tooltip.setActive(item);
 		this.#layers.tooltip.render();
-		if (this.#settings.type === "pie") this.#layers.chart.render();
-		if (item && this.#settings.tooltip.display) $.setAttribute(this.#canvas, "aria-description", `${item.label}. ${item.datasetLabel}: ${item.value}`);
-		else $.removeAttribute(this.#canvas, "aria-description");
+		if (this.#settings.type === "pie") this.#layers.chart.render(this.#progress);
+		if (item && this.#settings.tooltip.display) this.#canvas.setAttribute("aria-description", `${item.label}. ${item.datasetLabel}: ${item.value}`);
+		else this.#canvas.removeAttribute("aria-description");
 		this.draw();
 	}
 	/**
@@ -2026,7 +2145,7 @@ var Chart = class extends BaseComponent {
 	*/
 	#stop() {
 		if (this.#frame != null) {
-			window.cancelAnimationFrame(this.#frame);
+			this.#window.cancelAnimationFrame(this.#frame);
 			this.#frame = null;
 		}
 	}
@@ -2042,13 +2161,12 @@ var Chart = class extends BaseComponent {
 		});
 		const title = this.#settings.title.text || this.#settings.type;
 		const description = `${this.#settings.ariaLabel}. ${title}. ${datasets.join("; ")}`;
-		$.setAttribute(this.#canvas, "aria-label", description);
-		$.setText(this.#canvas, description);
+		this.#canvas.setAttribute("aria-label", description);
+		this.#canvas.textContent = description;
 	}
 };
 
 // src/index.js
-initComponent("chart", Chart);
 var src_default = Chart;
 
 export { Chart, src_default as default };

@@ -1,12 +1,12 @@
 # Frost Charts completion proposal
 
-Bring this unfinished canvas library into the FrostJS package family and complete its existing bar, line, and pie chart features. Preserve the original work in the initial Git commit, then replace the concatenated global scripts with explicit ES modules and test the resulting public API in real browsers.
+Complete this canvas library as a standalone FrostJS package with bar, line, and pie chart features and no runtime dependencies. Preserve the original work in the initial Git commit, then replace the concatenated global scripts with explicit ES modules and test the resulting public API in real browsers.
 
 ## Package conventions
 
-Use `@fr0st/charts`, matching this repository name and the scoped naming in `../color` and `../ui-slider`. Keep version `1.0.0` until a release is explicitly requested. Follow `../ui-slider` for current `@fr0st/ui` component registration and lifecycle, external peer dependencies, Vite ESM and UMD builds with source maps, shared ESLint configuration, Playwright browser tests, coverage, and CI. Include an MIT license, package exports, README, local demos, and a reproducible lockfile. Track generated bundles as the siblings do.
+Use `@fr0st/charts`, matching this repository name and the scoped naming in `../color` and `../ui-slider`. Keep version `1.0.0` until a release is explicitly requested. Follow `../color` for standalone ESM and UMD entry points, and `../ui-slider` for Vite builds with source maps, shared ESLint configuration, Playwright browser tests, coverage, and CI. Include an MIT license, package exports, README, local demos, and a reproducible lockfile. Track generated bundles as the siblings do.
 
-The modern entry point will export `Chart`; the UMD build will extend `UI.Chart`. Replace the obsolete `Core`, `dom`, and FrostUI 1.x assumptions with the current `BaseComponent` and `initComponent` contracts. Use lowercase module filenames and direct imports. Document migration from the prototype's `window.Chart` and `frost-chart.js` bundle names.
+The module entry point exports `Chart`; the UMD build exposes `window.Chart`. Replace the old `Core`, `dom`, and UI component integration with native DOM APIs, explicitly owned listeners and observers, and a private instance registry for `Chart.init`. Use lowercase module filenames and direct imports. Keep renderers in `src/charts/` and shared visual layers in `src/layers/`. Document migration from the earlier UI-based baseline and the prototype's `frost-chart.js` bundle name.
 
 ## Source conventions
 
@@ -19,7 +19,7 @@ Retain the original `Chart`, `Layer`, title, legend, axis-label, grid, bar, line
 - Make empty, zero, constant, negative Cartesian, single-label, and narrow-container data safe. Reject negative pie values and nonfinite values with useful errors. Recalculate scales after every update and resize.
 - Finish title wrapping and placement, legend placement and wrapping, tick formatting, grid visibility, dataset colors, and borders.
 - Replace accumulating hover callbacks with current-frame geometry. Support canvas-local pointer coordinates, hover highlighting, the unfinished canvas tooltip layer, and accessible canvas descriptions.
-- Make animation duration elapsed-time based, respect reduced motion, and cancel superseded frames. Resize with the container and device pixel ratio. Dispose observers, events, animation frames, generated DOM, and registered component state.
+- Animate bars, line points, and pie angles using elapsed time, respect reduced motion, and cancel superseded frames. Resize with the container and device pixel ratio. Dispose observers, events, animation frames, generated DOM, and registered chart state.
 - Support `setData`, `setSettings`, `getData`, `getLabels`, `getValues`, scale getters, `update`, `render`, `draw`, `resize`, and `dispose`; retain `calculate` and `run` as compatibility methods. Keep the original layer classes and static class aliases, with private internal fields and explicit shared layer interfaces.
 
 ## Existing defects to resolve
@@ -28,6 +28,6 @@ The current line and pie paths call a missing `data` method. `setData` ignores i
 
 ## Acceptance checks
 
-Run shared lint, build all four bundles, and validate package contents. Exercise actual canvas rendering, public data/settings updates, invalid-input rollback, scale boundaries, colors, layout, tooltip hit testing after scroll and CSS scaling, animation cancellation, high-DPI sizing, resize, and disposal in Chromium, Firefox, and WebKit. Test minified and ESM entry points as well as UMD registration. Add coverage reporting and CI using the sibling workflows as references. Update demos to work from installed local dependencies without old CDN URLs.
+Run shared lint, build all four bundles, and validate package contents. Exercise actual canvas rendering, public data/settings updates, invalid-input rollback, scale boundaries, colors, layout, tooltip hit testing after scroll and CSS scaling, animation cancellation, high-DPI sizing, resize, and disposal in Chromium, Firefox, and WebKit. Add coverage reporting and CI using the sibling workflows as references. Use the Frost UI stylesheet from the CDN for demo presentation, following the sibling projects. Run chart behavior tests without UI or query, and omit separate demo and bundle test suites.
 
 Publishing, remote repository changes, new chart families, stacking, zooming, and a general plugin API are outside this completion pass.

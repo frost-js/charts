@@ -26,8 +26,7 @@ export default [
         ],
         languageOptions: {
             globals: {
-                $: 'readonly',
-                UI: 'readonly',
+                Chart: 'readonly',
             },
         },
     },

@@ -1,22 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-ui-theme="light">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Frost Charts Demos</title>
-    <link rel="stylesheet" href="../node_modules/@fr0st/ui/dist/frost-ui.css">
+    <title>Demos · Frost Charts</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fr0st/ui@4/dist/frost-ui.min.css">
 </head>
 
 <body>
-    <main class="container py-5">
-        <h1>Frost Charts</h1>
-        <p>Bar, line, and pie charts with titles, legends, and pointer tooltips.</p>
-        <nav class="d-flex gap-3" aria-label="Chart examples">
-            <a href="bar.html">Grouped bars</a>
-            <a href="line.html">Line series</a>
-            <a href="pie.htm">Pie slices</a>
-        </nav>
+    <header class="navbar bg-glass border-bottom">
+        <div class="container d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="index.html">
+                <span class="badge bg-primary bg-gradient fs-5" aria-hidden="true">F</span>
+                <span>Charts</span>
+            </a>
+            <nav class="d-flex flex-wrap gap-2" aria-label="Chart examples">
+                <a class="btn btn-sm btn-outline-primary" href="bar.html">Grouped bars</a>
+                <a class="btn btn-sm btn-outline-primary" href="line.html">Line series</a>
+                <a class="btn btn-sm btn-outline-primary" href="pie.htm">Pie slices</a>
+            </nav>
+        </div>
+    </header>
+    <main class="container py-4 py-lg-5">
+        <section class="card border-0 bg-ambient shadow-sm mb-5">
+            <div class="card-body p-4 p-md-5">
+                <span class="badge bg-primary-subtle text-primary-subtle mb-3">Frost UI components</span>
+                <h1 class="display-3 mb-3">Frost Charts</h1>
+                <p class="lead text-body-secondary mb-4">Compare categories, follow trends, and explore proportions with interactive canvas charts.</p>
+                <a class="btn btn-primary" href="bar.html">Explore the demos</a>
+            </div>
+        </section>
+
+        <section class="mb-5" aria-labelledby="examples-heading">
+            <header class="border-bottom pb-3 mb-4">
+                <h2 class="h3 mb-1" id="examples-heading">Choose a chart</h2>
+                <p class="text-body-secondary mb-0">Each example includes live data updates, animated transitions, and pointer tooltips.</p>
+            </header>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <article class="card card-body h-100 p-4">
+                        <h3 class="h4">Grouped bars</h3>
+                        <p class="text-body-secondary">Compare four teams across five months, including values below zero.</p>
+                        <a class="btn btn-outline-primary mt-auto" href="bar.html">Open bar demo</a>
+                    </article>
+                </div>
+                <div class="col-md-4">
+                    <article class="card card-body h-100 p-4">
+                        <h3 class="h4">Line series</h3>
+                        <p class="text-body-secondary">Compare visits from two channels over the working week.</p>
+                        <a class="btn btn-outline-primary mt-auto" href="line.html">Open line demo</a>
+                    </article>
+                </div>
+                <div class="col-md-4">
+                    <article class="card card-body h-100 p-4">
+                        <h3 class="h4">Pie slices</h3>
+                        <p class="text-body-secondary">See how each channel contributes to the total number of visits.</p>
+                        <a class="btn btn-outline-primary mt-auto" href="pie.htm">Open pie demo</a>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <footer class="border-top pt-4 text-body-secondary">
+            Source and API: <a href="../README.md">README</a> · <a href="https://github.com/frost-js/charts">GitHub</a>
+        </footer>
     </main>
 </body>
 
