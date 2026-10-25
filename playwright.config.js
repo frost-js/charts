@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-const baseURL = `http://localhost:${process.env.PORT ?? 3017}`;
+const baseURL = `http://localhost:${process.env.PORT ?? 3001}`;
 
 export default defineConfig({
     projects: [

@@ -1,51 +1,39 @@
 import process from 'node:process';
 import { test as base, expect } from '@playwright/test';
 import { addCoverageReport } from 'monocart-reporter';
+import { setupClock } from '../setup/browser.js';
 
 const collectCoverage = process.env.FROST_CHARTS_COVERAGE === 'true';
 
 const test = base.extend({
+    expectedBrowserErrors: [[], { option: true }],
+    mockClock: [false, { option: true }],
     chartPage: [
-        async ({ page }, use, testInfo) => {
+        async ({ page, mockClock, expectedBrowserErrors }, use, testInfo) => {
             const errors = [];
 
             page.on('pageerror', (error) => errors.push(error.message));
 
             if (collectCoverage) {
-                await page.coverage.startJSCoverage({ resetOnNavigation: false });
+                await page.coverage.startJSCoverage({
+                    resetOnNavigation: false,
+                });
             }
 
-            await page.goto('/');
+            if (mockClock) {
+                await setupClock(page);
+            }
+
+            await page.goto('/', {
+                waitUntil: 'domcontentloaded',
+            });
 
             await page.evaluate(() => {
-                document.body.innerHTML = '<div id="chart" style="width:600px;height:400px"></div>';
-                window.chart = null;
+                if (typeof window.Chart !== 'function') {
+                    throw new Error('Failed to load Frost Charts on the test page.');
+                }
 
-                window.makeChart = (settings = {}) => {
-                    window.chart?.dispose();
-
-                    window.chart = new Chart(document.getElementById('chart'), {
-                        animation: { duration: 0 },
-                        title: { display: false },
-                        legend: { display: false },
-                        scales: {
-                            x: { display: false },
-                            y: { display: false },
-                        },
-                        data: {
-                            labels: ['A', 'B'],
-                            datasets: [
-                                {
-                                    label: 'Sales',
-                                    data: [10, 20],
-                                    backgroundColor: ['#ff0000', '#0000ff'],
-                                    borderWidth: 0,
-                                },
-                            ],
-                        },
-                        ...settings,
-                    });
-                };
+                document.body.replaceChildren();
             });
 
             await use();
@@ -56,7 +44,7 @@ const test = base.extend({
                 await addCoverageReport(coverage, testInfo);
             }
 
-            expect(errors, 'Uncaught browser errors').toEqual([]);
+            expect(errors, 'Uncaught browser errors').toEqual(expectedBrowserErrors);
         },
         { auto: true },
     ],

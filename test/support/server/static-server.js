@@ -36,4 +36,4 @@ const server = createServer(async (request, response) => {
     }
 });
 
-server.listen(Number(process.env.PORT ?? 3017), 'localhost');
+server.listen(Number(process.env.PORT ?? 3001));
