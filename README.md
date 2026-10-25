@@ -1,5 +1,12 @@
 # Frost Charts
 
+[![CI](https://github.com/frost-js/charts/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/frost-js/charts/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/frost-js/charts/branch/master/graph/badge.svg)](https://codecov.io/gh/frost-js/charts)
+[![npm version](https://img.shields.io/npm/v/%40fr0st%2Fcharts?style=flat-square)](https://www.npmjs.com/package/@fr0st/charts)
+[![npm downloads](https://img.shields.io/npm/dm/%40fr0st%2Fcharts?style=flat-square)](https://www.npmjs.com/package/@fr0st/charts)
+[![JS gzip size](https://img.badgesize.io/frost-js/charts/master/dist/frost-charts.min.js?compression=gzip&label=JS%20gzip%20size&style=flat-square)](https://github.com/frost-js/charts/blob/master/dist/frost-charts.min.js)
+[![license](https://img.shields.io/github/license/frost-js/charts?style=flat-square)](./LICENSE)
+
 Standalone canvas bar, line, area, pie, donut, scatter, polar area, and radar charts with no runtime dependencies. Charts support horizontal and stacked bars, titles, interactive legends, configurable axes, animated updates, pointer tooltips, responsive sizing, and high-DPI rendering.
 
 ## Installation
@@ -71,7 +78,9 @@ Scatter datasets accept finite `{ x, y }` points. Labels are optional, datasets 
 
 The default palette starts with indigo, teal, amber, and pink and contains twelve colors. Cartesian and radar series receive one color per dataset; pie, donut, and polar area slices cycle through the palette. Explicit dataset colors override the defaults. Grid lines use a soft gray, axis borders a slightly darker gray, and ticks inherit their grid color unless `tickColor` is supplied.
 
-Inputs and getter results are copied. Changing the original data object does not change a chart; call `setData` to apply an update. Invalid data or settings are rejected before replacing the current state.
+Inputs and data getter results are copied. Changing the original data object does not change a chart; call `setData` to apply an update. `chart.options` is a deeply frozen snapshot, reused until data or settings change. Invalid data and unsupported chart types are rejected before replacing the current state.
+
+Numeric strings are accepted for values, coordinates, and numeric settings. Invalid numeric settings fall back to defaults; negative dimensions clamp to zero, and fill opacity clamps to the range 0–1. Invalid font sizes and donut cutouts use their defaults.
 
 ## Options
 
@@ -230,7 +239,7 @@ If using the earlier completion baseline, replace `new UI.Chart(...)` or `fQuery
 
 The additional `Chart.Area`, `Chart.Donut`, and `Chart.Scatter` aliases expose the shared variant renderers. `Chart.PolarArea` and `Chart.Radar` expose the radial renderers. The original layer responsibilities and `Chart.Bar`, `Chart.Line`, `Chart.Pie`, `Chart.Grid`, `Chart.Layer`, `Chart.Legend`, `Chart.Rect`, `Chart.Title`, and `Chart.Tooltip` class aliases remain. Internal underscore fields and methods are now private; direct access to prototype internals is unsupported.
 
-The initial prototype is preserved in commit `a0b4404`. The completion scope is recorded in [PROPOSAL.md](PROPOSAL.md).
+The initial prototype is preserved in commit `a0b4404`.
 
 ## License
 

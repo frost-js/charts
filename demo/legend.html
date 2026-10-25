@@ -7,7 +7,8 @@
     <title>Legend placement · Frost Charts</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fr0st/ui@4/dist/frost-ui.min.css">
     <link rel="stylesheet" href="assets/demo.css">
-    <script src="../dist/frost-charts.js"></script>
+    <script src="../dist/frost-charts.js" defer></script>
+    <script src="assets/legend.js" defer></script>
 </head>
 
 <body>
@@ -23,7 +24,7 @@
             <a class="nav-link" href="bar-stacked.html">Stacked bars</a>
             <a class="nav-link" href="line.html">Line series</a>
             <a class="nav-link" href="area.html">Area series</a>
-            <a class="nav-link" href="pie.htm">Pie slices</a>
+            <a class="nav-link" href="pie.html">Pie slices</a>
             <a class="nav-link" href="donut.html">Donut slices</a>
             <a class="nav-link" href="scatter.html">Scatter plots</a>
             <a class="nav-link" href="polar-area.html">Polar area</a>
@@ -68,24 +69,6 @@
             Source and API: <a href="../README.md">README</a> · <a href="https://github.com/frost-js/charts">GitHub</a>
         </footer>
     </main>
-
-    <script>
-        const data = {
-            labels: ['Jan', 'Feb', 'Mar'],
-            datasets: [
-                { label: 'Online', data: [12, 18, 15], borderWidth: 0 },
-                { label: 'In store', data: [8, 10, 14], borderWidth: 0 },
-            ],
-        };
-
-        for (const position of ['top', 'right', 'bottom', 'left']) {
-            new Chart(document.getElementById(`chart-${position}`), {
-                data,
-                title: { display: false },
-                legend: { position },
-            });
-        }
-    </script>
 </body>
 
 </html>

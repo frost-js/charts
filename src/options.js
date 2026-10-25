@@ -1,4 +1,10 @@
 /**
+ * @import { ChartFont, ChartOptions } from './chart.js';
+ */
+
+import { parseNumber, parsePositiveNumber } from './helpers.js';
+
+/**
  * Merges option objects, cloning arrays instead of merging their entries.
  * @param {...object} sources The option sources in precedence order.
  * @returns {object} The merged options.
@@ -32,163 +38,106 @@ export function mergeOptions(...sources) {
 }
 
 /**
- * Validates a nonnegative numeric option.
- * @param {number} value The supplied value.
- * @param {string} name The option path used in the error message.
+ * Freezes a copied options tree without freezing caller-owned callbacks.
+ * @param {object} options The copied options.
+ * @returns {object} The frozen options.
  */
-function validateDimension(value, name) {
-    if (!Number.isFinite(value) || value < 0) {
-        throw new RangeError(`${name} must be a finite, nonnegative number.`);
+export function freezeOptions(options) {
+    for (const value of Object.values(options)) {
+        if (value && typeof value === 'object') {
+            freezeOptions(value);
+        }
     }
+
+    return Object.freeze(options);
 }
 
 /**
- * Validates the resolved font used by a chart layer.
- * @param {object} font The font settings.
- * @param {string} name The option path used in the error message.
+ * Resolves an inherited font and normalizes its dimensions.
+ * @param {ChartFont} font The font overrides.
+ * @param {ChartFont} defaults The inherited font.
+ * @returns {ChartFont} The resolved font.
  */
-function validateFont(font, name) {
-    if (!Number.isFinite(font.size) || font.size <= 0) {
-        throw new RangeError(`${name}.size must be a positive, finite number.`);
-    }
+function normalizeFont(font, defaults) {
+    const resolved = mergeOptions(defaults, font);
 
-    if (!Number.isFinite(font.lineHeight) || font.lineHeight <= 0) {
-        throw new RangeError(`${name}.lineHeight must be a positive, finite number.`);
-    }
+    resolved.size = parsePositiveNumber(resolved.size, defaults.size);
+    resolved.lineHeight = parsePositiveNumber(resolved.lineHeight, defaults.lineHeight);
 
-    if (typeof font.family !== 'string' || !font.family.trim()) {
-        throw new TypeError(`${name}.family must be a nonempty string.`);
-    }
+    return resolved;
 }
 
 /**
- * Validates the layout settings shared by titles and legends.
- * @param {object} settings The layer settings.
- * @param {string} name The option path used in the error message.
+ * Resolves fonts and numeric options using the component defaults.
+ * @param {ChartOptions} options The merged chart options.
+ * @param {ChartOptions} defaults The component defaults.
+ * @returns {ChartOptions} The normalized options.
  */
-function validatePosition(settings, name) {
-    const positions = ['top', 'right', 'bottom', 'left'];
-    const alignments = ['start', 'center', 'end', 'left', 'right'];
-
-    if (!positions.includes(settings.position)) {
-        throw new TypeError(`${name}.position must be top, right, bottom, or left.`);
-    }
-
-    if (!alignments.includes(settings.align)) {
-        throw new TypeError(`${name}.align must be start, center, end, left, or right.`);
-    }
-}
-
-/**
- * Validates an axis and resolves its tick font.
- * @param {object} axis The axis settings.
- * @param {object} font The base chart font.
- * @param {string} name The option path used in validation errors.
- */
-function validateAxis(axis, font, name) {
-    if (!axis?.grid || !axis.ticks) {
-        throw new TypeError(`${name} requires grid and ticks settings.`);
-    }
-
-    validateDimension(axis.grid.tickLength, `${name}.grid.tickLength`);
-    validateDimension(axis.grid.lineWidth, `${name}.grid.lineWidth`);
-    validateDimension(axis.grid.borderWidth, `${name}.grid.borderWidth`);
-    validateDimension(axis.ticks.padding, `${name}.ticks.padding`);
-
-    const callback = axis.ticks.callback;
-
-    if (callback != null && typeof callback !== 'function') {
-        throw new TypeError(`${name}.ticks.callback must be a function.`);
-    }
-
-    axis.ticks.font = mergeOptions(font, axis.ticks.font);
-    validateFont(axis.ticks.font, `${name}.ticks.font`);
-}
-
-/**
- * Validates merged options and resolves the fonts inherited by each layer.
- * @param {object} options The merged chart options.
- * @returns {object} The validated options with resolved fonts.
- */
-export function normalizeOptions(options) {
+export function normalizeOptions(options, defaults) {
     if (!['bar', 'line', 'area', 'pie', 'donut', 'scatter', 'polarArea', 'radar'].includes(options.type)) {
         throw new TypeError('Chart type must be bar, line, area, pie, donut, scatter, polarArea, or radar.');
     }
 
-    if (!options.font || !options.title || !options.legend?.labels || !options.tooltip) {
-        throw new TypeError('Chart options require font, title, legend, and tooltip settings.');
+    options.font = normalizeFont(options.font, defaults.font);
+    options.layout.padding = Math.max(0, parseNumber(options.layout.padding, defaults.layout.padding));
+    options.animation.duration = Math.max(0, parseNumber(options.animation.duration, defaults.animation.duration));
+
+    const cutout = parseNumber(options.cutout, defaults.cutout);
+
+    options.cutout = cutout >= 0 && cutout < 1 ? cutout : defaults.cutout;
+
+    for (const name of ['title', 'legend']) {
+        const layer = options[name];
+
+        if (!['top', 'right', 'bottom', 'left'].includes(layer.position)) {
+            layer.position = defaults[name].position;
+        }
     }
 
-    if (!['vertical', 'horizontal'].includes(options.orientation)) {
-        throw new TypeError('Bar orientation must be vertical or horizontal.');
+    options.title.padding = Math.max(0, parseNumber(options.title.padding, defaults.title.padding));
+    options.title.font = normalizeFont(options.title.font, options.font);
+
+    const labels = options.legend.labels;
+    const defaultLabels = defaults.legend.labels;
+
+    labels.font = normalizeFont(labels.font, options.font);
+    labels.padding = Math.max(0, parseNumber(labels.padding, defaultLabels.padding));
+    labels.boxWidth = Math.max(0, parseNumber(labels.boxWidth, defaultLabels.boxWidth));
+    labels.boxHeight = Math.max(0, parseNumber(labels.boxHeight, defaultLabels.boxHeight));
+
+    for (const dimension of ['maxWidth', 'maxHeight']) {
+        if (options.legend[dimension] != null) {
+            options.legend[dimension] = Math.max(0, parseNumber(options.legend[dimension], Infinity));
+        }
     }
 
-    if (typeof options.stacked !== 'boolean' || typeof options.legend.interactive !== 'boolean') {
-        throw new TypeError('Stacked and legend.interactive must be booleans.');
+    for (const name of ['x', 'y']) {
+        const axis = options.scales[name];
+        const defaultAxis = defaults.scales[name];
+
+        axis.grid.tickLength = Math.max(0, parseNumber(axis.grid.tickLength, defaultAxis.grid.tickLength));
+        axis.grid.lineWidth = Math.max(0, parseNumber(axis.grid.lineWidth, defaultAxis.grid.lineWidth));
+        axis.grid.borderWidth = Math.max(0, parseNumber(axis.grid.borderWidth, defaultAxis.grid.borderWidth));
+
+        axis.ticks.padding = Math.max(0, parseNumber(axis.ticks.padding, defaultAxis.ticks.padding));
+        axis.ticks.font = normalizeFont(axis.ticks.font, options.font);
     }
-
-    validateFont(options.font, 'font');
-    validateDimension(options.layout?.padding, 'layout.padding');
-    validateDimension(options.animation?.duration, 'animation.duration');
-
-    if (!['linear', 'easeOutQuad', 'easeInOutQuad'].includes(options.animation.easing)) {
-        throw new TypeError('Animation easing must be linear, easeOutQuad, or easeInOutQuad.');
-    }
-
-    if (!Number.isFinite(options.cutout) || options.cutout < 0 || options.cutout >= 1) {
-        throw new RangeError('Donut cutout must be at least zero and less than one.');
-    }
-
-    if (!['cursor', 'fixed'].includes(options.tooltip.position)) {
-        throw new TypeError('Tooltip position must be cursor or fixed.');
-    }
-
-    validatePosition(options.title, 'title');
-    validateDimension(options.title.padding, 'title.padding');
-    options.title.font = mergeOptions(options.font, options.title.font);
-    validateFont(options.title.font, 'title.font');
-
-    validatePosition(options.legend, 'legend');
-    validateDimension(options.legend.labels.padding, 'legend.labels.padding');
-    validateDimension(options.legend.labels.boxWidth, 'legend.labels.boxWidth');
-    validateDimension(options.legend.labels.boxHeight, 'legend.labels.boxHeight');
-    options.legend.labels.font = mergeOptions(options.font, options.legend.labels.font);
-    validateFont(options.legend.labels.font, 'legend.labels.font');
-
-    if (options.legend.maxWidth != null) {
-        validateDimension(options.legend.maxWidth, 'legend.maxWidth');
-    }
-
-    if (options.legend.maxHeight != null) {
-        validateDimension(options.legend.maxHeight, 'legend.maxHeight');
-    }
-
-    validateAxis(options.scales?.x, options.font, 'scales.x');
-    validateAxis(options.scales?.y, options.font, 'scales.y');
 
     const radial = options.scales.r;
+    const defaultRadial = defaults.scales.r;
 
-    if (!radial?.grid || !radial.ticks || !radial.labels) {
-        throw new TypeError('scales.r requires grid, ticks, and labels settings.');
-    }
+    radial.grid.lineWidth = Math.max(0, parseNumber(radial.grid.lineWidth, defaultRadial.grid.lineWidth));
+    radial.labels.padding = Math.max(0, parseNumber(radial.labels.padding, defaultRadial.labels.padding));
+    radial.labels.font = normalizeFont(radial.labels.font, options.font);
+    radial.ticks.font = normalizeFont(radial.ticks.font, options.font);
 
-    validateDimension(radial.grid.lineWidth, 'scales.r.grid.lineWidth');
-    validateDimension(radial.labels.padding, 'scales.r.labels.padding');
+    const tooltip = options.tooltip;
+    const defaultTooltip = defaults.tooltip;
 
-    if (radial.ticks.callback != null && typeof radial.ticks.callback !== 'function') {
-        throw new TypeError('scales.r.ticks.callback must be a function.');
-    }
-
-    for (const name of ['ticks', 'labels']) {
-        radial[name].font = mergeOptions(options.font, radial[name].font);
-        validateFont(radial[name].font, `scales.r.${name}.font`);
-    }
-
-    validateDimension(options.tooltip.padding, 'tooltip.padding');
-    validateDimension(options.tooltip.borderRadius, 'tooltip.borderRadius');
-    validateDimension(options.tooltip.arrowSize, 'tooltip.arrowSize');
-    options.tooltip.font = mergeOptions(options.font, options.tooltip.font);
-    validateFont(options.tooltip.font, 'tooltip.font');
+    tooltip.padding = Math.max(0, parseNumber(tooltip.padding, defaultTooltip.padding));
+    tooltip.borderRadius = Math.max(0, parseNumber(tooltip.borderRadius, defaultTooltip.borderRadius));
+    tooltip.arrowSize = Math.max(0, parseNumber(tooltip.arrowSize, defaultTooltip.arrowSize));
+    tooltip.font = normalizeFont(tooltip.font, options.font);
 
     return options;
 }

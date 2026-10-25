@@ -1,3 +1,87 @@
+// src/helpers.js
+/**
+* @import { ChartFont } from './chart.js';
+*/
+/**
+* Measures text using a font-metric fallback for older canvas implementations.
+* @param {CanvasRenderingContext2D} context The measuring context.
+* @param {string|number} text The text to measure.
+* @returns {object} The text width, ascent, and descent.
+*/
+function measureText(context, text) {
+	const metrics = context.measureText(String(text));
+	const match = context.font.match(/([\d.]+)px/);
+	const fontSize = match ? Number(match[1]) : 12;
+	return {
+		width: metrics.width,
+		fontBoundingBoxAscent: metrics.fontBoundingBoxAscent ?? fontSize * .8,
+		fontBoundingBoxDescent: metrics.fontBoundingBoxDescent ?? fontSize * .2
+	};
+}
+/**
+* Parses a finite numeric value, using a fallback for missing or invalid input.
+* @param {*} value The value to parse.
+* @param {number} fallback The fallback value.
+* @returns {number} The parsed value or fallback.
+*/
+function parseNumber(value, fallback) {
+	if (!["number", "string"].includes(typeof value) || `${value}`.trim() === "") return fallback;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : fallback;
+}
+/**
+* Parses a positive finite number, using a fallback for invalid input.
+* @param {*} value The value to parse.
+* @param {number} fallback The positive fallback value.
+* @returns {number} The positive number or fallback.
+*/
+function parsePositiveNumber(value, fallback) {
+	const number = parseNumber(value, fallback);
+	return number > 0 ? number : fallback;
+}
+/**
+* Sets a canvas font from the resolved chart font options.
+* @param {CanvasRenderingContext2D} context The drawing context.
+* @param {ChartFont} font The resolved font options.
+*/
+function updateFont(context, font) {
+	context.font = `${font.style || "normal"} ${font.weight} ${font.size}px ${font.family}`;
+}
+/**
+* Wraps text at word boundaries and splits words wider than the available space.
+* @param {CanvasRenderingContext2D} context The measuring context.
+* @param {string} text The text to wrap.
+* @param {number} maxWidth The maximum line width.
+* @returns {string[]} The wrapped lines.
+*/
+function wrapLines(context, text, maxWidth) {
+	if (maxWidth <= 0) return [];
+	const lines = [];
+	for (const paragraph of String(text).split("\n")) {
+		let line = "";
+		for (const word of paragraph.split(/\s+/)) {
+			const nextLine = line ? `${line} ${word}` : word;
+			if (measureText(context, nextLine).width <= maxWidth) {
+				line = nextLine;
+				continue;
+			}
+			if (line) {
+				lines.push(line);
+				line = "";
+			}
+			for (const character of word) {
+				if (line && measureText(context, line + character).width > maxWidth) {
+					lines.push(line);
+					line = "";
+				}
+				line += character;
+			}
+		}
+		lines.push(line);
+	}
+	return lines;
+}
+
 // src/data.js
 /**
 * @typedef {object} ChartDataset
@@ -50,12 +134,15 @@ function normalizeColors(colors, name) {
 function normalizeValues(data, type, index) {
 	return Array.from(data, (value) => {
 		if (type === "scatter") {
-			if (!value || !Number.isFinite(value.x) || !Number.isFinite(value.y)) throw new TypeError(`Dataset ${index} points must have finite x and y coordinates.`);
+			const x = parseNumber(value?.x, NaN);
+			const y = parseNumber(value?.y, NaN);
+			if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`Dataset ${index} points must have finite x and y coordinates.`);
 			return {
-				x: value.x,
-				y: value.y
+				x,
+				y
 			};
 		}
+		value = parseNumber(value, NaN);
 		if (!Number.isFinite(value)) throw new TypeError(`Dataset ${index} values must be finite numbers.`);
 		if ([
 			"pie",
@@ -78,12 +165,9 @@ function normalizeDataset(dataset, index, labelCount, type) {
 	if (!dataset || !Array.isArray(dataset.data)) throw new TypeError(`Dataset ${index} requires a data array.`);
 	if (type !== "scatter" && dataset.data.length !== labelCount) throw new RangeError(`Dataset ${index} must have one value per label.`);
 	const values = normalizeValues(dataset.data, type, index);
-	const borderWidth = dataset.borderWidth ?? 1;
-	const pointRadius = dataset.pointRadius ?? (type === "scatter" ? 4 : 2);
-	const fillOpacity = dataset.fillOpacity ?? (type === "polarArea" ? .75 : .2);
-	if (!Number.isFinite(borderWidth) || borderWidth < 0) throw new RangeError(`Dataset ${index} borderWidth must be a finite, nonnegative number.`);
-	if (!Number.isFinite(pointRadius) || pointRadius < 0) throw new RangeError(`Dataset ${index} pointRadius must be a finite, nonnegative number.`);
-	if (!Number.isFinite(fillOpacity) || fillOpacity < 0 || fillOpacity > 1) throw new RangeError(`Dataset ${index} fillOpacity must be between zero and one.`);
+	const borderWidth = Math.max(0, parseNumber(dataset.borderWidth, 1));
+	const pointRadius = Math.max(0, parseNumber(dataset.pointRadius, type === "scatter" ? 4 : 2));
+	const fillOpacity = Math.max(0, Math.min(1, parseNumber(dataset.fillOpacity, type === "polarArea" ? .75 : .2)));
 	const circular = [
 		"pie",
 		"donut",
@@ -1228,66 +1312,6 @@ var Grid = class extends Layer {
 	}
 };
 
-// src/helpers.js
-/**
-* Measures text using a font-metric fallback for older canvas implementations.
-* @param {CanvasRenderingContext2D} context The measuring context.
-* @param {string|number} text The text to measure.
-* @returns {object} The text width, ascent, and descent.
-*/
-function measureText(context, text) {
-	const metrics = context.measureText(String(text));
-	const match = context.font.match(/([\d.]+)px/);
-	const fontSize = match ? Number(match[1]) : 12;
-	return {
-		width: metrics.width,
-		fontBoundingBoxAscent: metrics.fontBoundingBoxAscent ?? fontSize * .8,
-		fontBoundingBoxDescent: metrics.fontBoundingBoxDescent ?? fontSize * .2
-	};
-}
-/**
-* Sets a canvas font from the resolved chart font options.
-* @param {CanvasRenderingContext2D} context The drawing context.
-* @param {object} font The resolved font options.
-*/
-function updateFont(context, font) {
-	context.font = `${font.style || "normal"} ${font.weight} ${font.size}px ${font.family}`;
-}
-/**
-* Wraps text at word boundaries and splits words wider than the available space.
-* @param {CanvasRenderingContext2D} context The measuring context.
-* @param {string} text The text to wrap.
-* @param {number} maxWidth The maximum line width.
-* @returns {string[]} The wrapped lines.
-*/
-function wrapLines(context, text, maxWidth) {
-	if (maxWidth <= 0) return [];
-	const lines = [];
-	for (const paragraph of String(text).split("\n")) {
-		let line = "";
-		for (const word of paragraph.split(/\s+/)) {
-			const nextLine = line ? `${line} ${word}` : word;
-			if (measureText(context, nextLine).width <= maxWidth) {
-				line = nextLine;
-				continue;
-			}
-			if (line) {
-				lines.push(line);
-				line = "";
-			}
-			for (const character of word) {
-				if (line && measureText(context, line + character).width > maxWidth) {
-					lines.push(line);
-					line = "";
-				}
-				line += character;
-			}
-		}
-		lines.push(line);
-	}
-	return lines;
-}
-
 // src/layers/labels-r.js
 /**
 * Draws centered radial scale numbers above the data fills.
@@ -2223,6 +2247,9 @@ var Tooltip = class extends Layer {
 
 // src/options.js
 /**
+* @import { ChartFont, ChartOptions } from './chart.js';
+*/
+/**
 * Merges option objects, cloning arrays instead of merging their entries.
 * @param {...object} sources The option sources in precedence order.
 * @returns {object} The merged options.
@@ -2247,68 +2274,33 @@ function mergeOptions(...sources) {
 	return options;
 }
 /**
-* Validates a nonnegative numeric option.
-* @param {number} value The supplied value.
-* @param {string} name The option path used in the error message.
+* Freezes a copied options tree without freezing caller-owned callbacks.
+* @param {object} options The copied options.
+* @returns {object} The frozen options.
 */
-function validateDimension(value, name) {
-	if (!Number.isFinite(value) || value < 0) throw new RangeError(`${name} must be a finite, nonnegative number.`);
+function freezeOptions(options) {
+	for (const value of Object.values(options)) if (value && typeof value === "object") freezeOptions(value);
+	return Object.freeze(options);
 }
 /**
-* Validates the resolved font used by a chart layer.
-* @param {object} font The font settings.
-* @param {string} name The option path used in the error message.
+* Resolves an inherited font and normalizes its dimensions.
+* @param {ChartFont} font The font overrides.
+* @param {ChartFont} defaults The inherited font.
+* @returns {ChartFont} The resolved font.
 */
-function validateFont(font, name) {
-	if (!Number.isFinite(font.size) || font.size <= 0) throw new RangeError(`${name}.size must be a positive, finite number.`);
-	if (!Number.isFinite(font.lineHeight) || font.lineHeight <= 0) throw new RangeError(`${name}.lineHeight must be a positive, finite number.`);
-	if (typeof font.family !== "string" || !font.family.trim()) throw new TypeError(`${name}.family must be a nonempty string.`);
+function normalizeFont(font, defaults) {
+	const resolved = mergeOptions(defaults, font);
+	resolved.size = parsePositiveNumber(resolved.size, defaults.size);
+	resolved.lineHeight = parsePositiveNumber(resolved.lineHeight, defaults.lineHeight);
+	return resolved;
 }
 /**
-* Validates the layout settings shared by titles and legends.
-* @param {object} settings The layer settings.
-* @param {string} name The option path used in the error message.
+* Resolves fonts and numeric options using the component defaults.
+* @param {ChartOptions} options The merged chart options.
+* @param {ChartOptions} defaults The component defaults.
+* @returns {ChartOptions} The normalized options.
 */
-function validatePosition(settings, name) {
-	const positions = [
-		"top",
-		"right",
-		"bottom",
-		"left"
-	];
-	const alignments = [
-		"start",
-		"center",
-		"end",
-		"left",
-		"right"
-	];
-	if (!positions.includes(settings.position)) throw new TypeError(`${name}.position must be top, right, bottom, or left.`);
-	if (!alignments.includes(settings.align)) throw new TypeError(`${name}.align must be start, center, end, left, or right.`);
-}
-/**
-* Validates an axis and resolves its tick font.
-* @param {object} axis The axis settings.
-* @param {object} font The base chart font.
-* @param {string} name The option path used in validation errors.
-*/
-function validateAxis(axis, font, name) {
-	if (!axis?.grid || !axis.ticks) throw new TypeError(`${name} requires grid and ticks settings.`);
-	validateDimension(axis.grid.tickLength, `${name}.grid.tickLength`);
-	validateDimension(axis.grid.lineWidth, `${name}.grid.lineWidth`);
-	validateDimension(axis.grid.borderWidth, `${name}.grid.borderWidth`);
-	validateDimension(axis.ticks.padding, `${name}.ticks.padding`);
-	const callback = axis.ticks.callback;
-	if (callback != null && typeof callback !== "function") throw new TypeError(`${name}.ticks.callback must be a function.`);
-	axis.ticks.font = mergeOptions(font, axis.ticks.font);
-	validateFont(axis.ticks.font, `${name}.ticks.font`);
-}
-/**
-* Validates merged options and resolves the fonts inherited by each layer.
-* @param {object} options The merged chart options.
-* @returns {object} The validated options with resolved fonts.
-*/
-function normalizeOptions(options) {
+function normalizeOptions(options, defaults) {
 	if (![
 		"bar",
 		"line",
@@ -2319,47 +2311,50 @@ function normalizeOptions(options) {
 		"polarArea",
 		"radar"
 	].includes(options.type)) throw new TypeError("Chart type must be bar, line, area, pie, donut, scatter, polarArea, or radar.");
-	if (!options.font || !options.title || !options.legend?.labels || !options.tooltip) throw new TypeError("Chart options require font, title, legend, and tooltip settings.");
-	if (!["vertical", "horizontal"].includes(options.orientation)) throw new TypeError("Bar orientation must be vertical or horizontal.");
-	if (typeof options.stacked !== "boolean" || typeof options.legend.interactive !== "boolean") throw new TypeError("Stacked and legend.interactive must be booleans.");
-	validateFont(options.font, "font");
-	validateDimension(options.layout?.padding, "layout.padding");
-	validateDimension(options.animation?.duration, "animation.duration");
-	if (![
-		"linear",
-		"easeOutQuad",
-		"easeInOutQuad"
-	].includes(options.animation.easing)) throw new TypeError("Animation easing must be linear, easeOutQuad, or easeInOutQuad.");
-	if (!Number.isFinite(options.cutout) || options.cutout < 0 || options.cutout >= 1) throw new RangeError("Donut cutout must be at least zero and less than one.");
-	if (!["cursor", "fixed"].includes(options.tooltip.position)) throw new TypeError("Tooltip position must be cursor or fixed.");
-	validatePosition(options.title, "title");
-	validateDimension(options.title.padding, "title.padding");
-	options.title.font = mergeOptions(options.font, options.title.font);
-	validateFont(options.title.font, "title.font");
-	validatePosition(options.legend, "legend");
-	validateDimension(options.legend.labels.padding, "legend.labels.padding");
-	validateDimension(options.legend.labels.boxWidth, "legend.labels.boxWidth");
-	validateDimension(options.legend.labels.boxHeight, "legend.labels.boxHeight");
-	options.legend.labels.font = mergeOptions(options.font, options.legend.labels.font);
-	validateFont(options.legend.labels.font, "legend.labels.font");
-	if (options.legend.maxWidth != null) validateDimension(options.legend.maxWidth, "legend.maxWidth");
-	if (options.legend.maxHeight != null) validateDimension(options.legend.maxHeight, "legend.maxHeight");
-	validateAxis(options.scales?.x, options.font, "scales.x");
-	validateAxis(options.scales?.y, options.font, "scales.y");
-	const radial = options.scales.r;
-	if (!radial?.grid || !radial.ticks || !radial.labels) throw new TypeError("scales.r requires grid, ticks, and labels settings.");
-	validateDimension(radial.grid.lineWidth, "scales.r.grid.lineWidth");
-	validateDimension(radial.labels.padding, "scales.r.labels.padding");
-	if (radial.ticks.callback != null && typeof radial.ticks.callback !== "function") throw new TypeError("scales.r.ticks.callback must be a function.");
-	for (const name of ["ticks", "labels"]) {
-		radial[name].font = mergeOptions(options.font, radial[name].font);
-		validateFont(radial[name].font, `scales.r.${name}.font`);
+	options.font = normalizeFont(options.font, defaults.font);
+	options.layout.padding = Math.max(0, parseNumber(options.layout.padding, defaults.layout.padding));
+	options.animation.duration = Math.max(0, parseNumber(options.animation.duration, defaults.animation.duration));
+	const cutout = parseNumber(options.cutout, defaults.cutout);
+	options.cutout = cutout >= 0 && cutout < 1 ? cutout : defaults.cutout;
+	for (const name of ["title", "legend"]) {
+		const layer = options[name];
+		if (![
+			"top",
+			"right",
+			"bottom",
+			"left"
+		].includes(layer.position)) layer.position = defaults[name].position;
 	}
-	validateDimension(options.tooltip.padding, "tooltip.padding");
-	validateDimension(options.tooltip.borderRadius, "tooltip.borderRadius");
-	validateDimension(options.tooltip.arrowSize, "tooltip.arrowSize");
-	options.tooltip.font = mergeOptions(options.font, options.tooltip.font);
-	validateFont(options.tooltip.font, "tooltip.font");
+	options.title.padding = Math.max(0, parseNumber(options.title.padding, defaults.title.padding));
+	options.title.font = normalizeFont(options.title.font, options.font);
+	const labels = options.legend.labels;
+	const defaultLabels = defaults.legend.labels;
+	labels.font = normalizeFont(labels.font, options.font);
+	labels.padding = Math.max(0, parseNumber(labels.padding, defaultLabels.padding));
+	labels.boxWidth = Math.max(0, parseNumber(labels.boxWidth, defaultLabels.boxWidth));
+	labels.boxHeight = Math.max(0, parseNumber(labels.boxHeight, defaultLabels.boxHeight));
+	for (const dimension of ["maxWidth", "maxHeight"]) if (options.legend[dimension] != null) options.legend[dimension] = Math.max(0, parseNumber(options.legend[dimension], Infinity));
+	for (const name of ["x", "y"]) {
+		const axis = options.scales[name];
+		const defaultAxis = defaults.scales[name];
+		axis.grid.tickLength = Math.max(0, parseNumber(axis.grid.tickLength, defaultAxis.grid.tickLength));
+		axis.grid.lineWidth = Math.max(0, parseNumber(axis.grid.lineWidth, defaultAxis.grid.lineWidth));
+		axis.grid.borderWidth = Math.max(0, parseNumber(axis.grid.borderWidth, defaultAxis.grid.borderWidth));
+		axis.ticks.padding = Math.max(0, parseNumber(axis.ticks.padding, defaultAxis.ticks.padding));
+		axis.ticks.font = normalizeFont(axis.ticks.font, options.font);
+	}
+	const radial = options.scales.r;
+	const defaultRadial = defaults.scales.r;
+	radial.grid.lineWidth = Math.max(0, parseNumber(radial.grid.lineWidth, defaultRadial.grid.lineWidth));
+	radial.labels.padding = Math.max(0, parseNumber(radial.labels.padding, defaultRadial.labels.padding));
+	radial.labels.font = normalizeFont(radial.labels.font, options.font);
+	radial.ticks.font = normalizeFont(radial.ticks.font, options.font);
+	const tooltip = options.tooltip;
+	const defaultTooltip = defaults.tooltip;
+	tooltip.padding = Math.max(0, parseNumber(tooltip.padding, defaultTooltip.padding));
+	tooltip.borderRadius = Math.max(0, parseNumber(tooltip.borderRadius, defaultTooltip.borderRadius));
+	tooltip.arrowSize = Math.max(0, parseNumber(tooltip.arrowSize, defaultTooltip.arrowSize));
+	tooltip.font = normalizeFont(tooltip.font, options.font);
 	return options;
 }
 
@@ -2437,19 +2432,128 @@ var Rect = class Rect {
 * @import { ChartData, ChartDataset } from './data.js';
 */
 /**
+* @typedef {object} ChartFont
+* @property {string} [family='"Helvetica Neue", Helvetica, Arial, sans-serif'] The CSS font family.
+* @property {number} [size=12] The font size in CSS pixels.
+* @property {string|number} [weight='normal'] The CSS font weight.
+* @property {string} [style='normal'] The CSS font style.
+* @property {number} [lineHeight=1.2] The line height as a multiple of the font size.
+*/
+/**
+* @typedef {object} ChartTitleOptions
+* @property {boolean} [display=true] Whether to show the title.
+* @property {string} [text='Title'] The title text.
+* @property {'top'|'right'|'bottom'|'left'} [position='top'] The title edge.
+* @property {'start'|'center'|'end'|'left'|'right'} [align='center'] Alignment along the edge.
+* @property {number} [padding=10] Space between the title and the chart.
+* @property {ChartFont} [font] Font overrides; defaults to size 18 and bold weight.
+* @property {string} [color='#334155'] The text color.
+*/
+/**
+* @typedef {object} ChartLegendLabelOptions
+* @property {number} [boxWidth=20] The swatch width in CSS pixels.
+* @property {number} [boxHeight=12] The swatch height in CSS pixels.
+* @property {number} [padding=10] Space around legend items.
+* @property {ChartFont} [font] Overrides for the inherited chart font.
+* @property {string} [color='#334155'] The text color.
+* @property {'start'|'center'|'end'|'left'|'right'} [textAlign='start'] The label alignment.
+*/
+/**
+* @typedef {object} ChartLegendOptions
+* @property {boolean} [display=true] Whether to show the legend.
+* @property {boolean} [interactive=true] Whether legend items toggle data visibility.
+* @property {'top'|'right'|'bottom'|'left'} [position='top'] The legend edge.
+* @property {'start'|'center'|'end'|'left'|'right'} [align='center'] Alignment along the edge.
+* @property {number|null} [maxWidth=null] The maximum width in CSS pixels, or no explicit limit.
+* @property {number|null} [maxHeight=null] The maximum height in CSS pixels, or no explicit limit.
+* @property {ChartLegendLabelOptions} [labels] Legend swatches and text.
+*/
+/**
+* @callback ChartTickCallback
+* @param {string|number} value The category label or scale value.
+* @param {number} index The tick index.
+* @returns {string|number} The formatted label.
+*/
+/**
+* @typedef {object} ChartGridOptions
+* @property {boolean} [display=true] Whether to show grid lines.
+* @property {boolean} [drawBorder=true] Whether to draw the axis border.
+* @property {string} [borderColor='#cbd5e1'] The axis border color.
+* @property {number} [borderWidth=1] The axis border width.
+* @property {string} [lineColor='#e2e8f0'] The grid line color.
+* @property {number} [lineWidth=1] The grid line width.
+* @property {number} [tickLength=8] The tick mark length.
+*/
+/**
+* @typedef {object} ChartTickOptions
+* @property {boolean} [display=true] Whether to show tick labels.
+* @property {boolean} [drawTicks=true] Whether to draw tick marks.
+* @property {string} [tickColor] The tick mark color.
+* @property {number} [padding=5] The distance between tick marks and labels.
+* @property {ChartFont} [font] Overrides for the inherited chart font.
+* @property {string} [color='#334155'] The label color.
+* @property {ChartTickCallback|null} [callback=null] The label formatter.
+*/
+/**
+* @typedef {object} ChartAxisOptions
+* @property {boolean} [display=true] Whether to show the axis.
+* @property {ChartGridOptions} [grid] The grid lines and axis border.
+* @property {ChartTickOptions} [ticks] The tick labels and marks.
+*/
+/**
+* @typedef {object} ChartRadialLabelOptions
+* @property {boolean} [display=true] Whether to show category labels.
+* @property {ChartFont} [font] Overrides for the inherited chart font.
+* @property {string} [color='#334155'] The label color.
+* @property {number} [padding=8] The distance from the outer grid ring.
+*/
+/**
+* @typedef {object} ChartRadialAxisOptions
+* @property {boolean} [display=true] Whether to show the radial axis.
+* @property {Pick<ChartGridOptions, 'display'|'lineColor'|'lineWidth'>} [grid] The radial grid lines.
+* @property {Pick<ChartTickOptions, 'display'|'font'|'color'|'callback'>} [ticks] The scale labels.
+* @property {ChartRadialLabelOptions} [labels] The category labels.
+*/
+/**
+* @typedef {object} ChartScaleOptions
+* @property {ChartAxisOptions} [x] The horizontal axis.
+* @property {ChartAxisOptions} [y] The vertical axis.
+* @property {ChartRadialAxisOptions} [r] The polar area and radar axis.
+*/
+/**
+* @typedef {object} ChartAnimationOptions
+* @property {number} [duration=300] The duration in milliseconds; zero disables animation.
+* @property {'linear'|'easeOutQuad'|'easeInOutQuad'} [easing='easeOutQuad'] The timing curve.
+*/
+/**
+* @typedef {object} ChartLayoutOptions
+* @property {number} [padding=20] The outer padding in CSS pixels.
+*/
+/**
+* @typedef {object} ChartTooltipOptions
+* @property {boolean} [display=true] Whether to show tooltips.
+* @property {'cursor'|'fixed'} [position='cursor'] Follow the pointer or anchor to the data mark.
+* @property {number} [padding=10] The inner padding in CSS pixels.
+* @property {number} [borderRadius=6] The corner radius in CSS pixels.
+* @property {number} [arrowSize=5] The arrow size; zero hides it.
+* @property {string} [backgroundColor='rgba(24, 28, 36, .92)'] The background color.
+* @property {string} [color='#fff'] The text color.
+* @property {ChartFont} [font] Overrides for the inherited chart font.
+*/
+/**
 * @typedef {object} ChartOptions
 * @property {'bar'|'line'|'area'|'pie'|'donut'|'scatter'|'polarArea'|'radar'} [type='bar'] The chart type.
 * @property {ChartData} [data] The category labels and datasets.
 * @property {'vertical'|'horizontal'} [orientation='vertical'] The bar direction.
 * @property {boolean} [stacked=false] Whether bar datasets share a stack.
-* @property {object} [font] The font inherited by chart layers.
-* @property {object} [title] The title text, position, and appearance.
-* @property {object} [legend] The legend position, bounds, and labels.
-* @property {object} [scales] The x and y grid and tick settings.
-* @property {object} [layout] The outer chart padding.
-* @property {object} [animation] The animation duration and easing curve.
+* @property {ChartFont} [font] The font inherited by chart layers.
+* @property {ChartTitleOptions} [title] The title text, position, and appearance.
+* @property {ChartLegendOptions} [legend] The legend position, bounds, and labels.
+* @property {ChartScaleOptions} [scales] The Cartesian and radial grid and tick settings.
+* @property {ChartLayoutOptions} [layout] The outer chart padding.
+* @property {ChartAnimationOptions} [animation] The animation duration and easing curve.
 * @property {number} [cutout=.6] The donut's inner radius as a fraction of its outer radius.
-* @property {object} [tooltip] The tooltip visibility, font, and colors.
+* @property {ChartTooltipOptions} [tooltip] The tooltip visibility, font, and colors.
 * @property {boolean} [responsive=true] Whether to observe container size changes.
 * @property {string} [ariaLabel='Chart'] The accessible chart description prefix.
 */
@@ -2611,6 +2715,7 @@ var Chart = class Chart {
 	#legendControls = null;
 	#node = null;
 	#observer = null;
+	#options = null;
 	#outerRect = null;
 	#pixelRatio = 1;
 	#pointer = null;
@@ -2643,8 +2748,9 @@ var Chart = class Chart {
 		this.#window = view;
 		try {
 			this.#inputOptions = mergeOptions(this.constructor.defaults, options);
-			this.#settings = normalizeOptions(mergeOptions(this.#inputOptions));
+			this.#settings = normalizeOptions(mergeOptions(this.#inputOptions), this.constructor.defaults);
 			this.#data = normalizeData(this.#settings.data, this.#settings.type, this.#settings.stacked);
+			this.#updateOptions();
 			this.#canvas = node.ownerDocument.createElement("canvas");
 			this.#canvas.setAttribute("role", "img");
 			this.#canvas.style.display = "block";
@@ -2671,12 +2777,11 @@ var Chart = class Chart {
 		return this.#node;
 	}
 	/**
-	* Gets a copy of the effective options and current data.
-	* @returns {ChartOptions|null} The options, or null after disposal.
+	* Gets the deeply frozen snapshot of the effective options and current data.
+	* @returns {Readonly<ChartOptions>|null} The options, or null after disposal.
 	*/
 	get options() {
-		if (!this.node) return null;
-		return Object.freeze(mergeOptions(this.#settings, { data: this.#data }));
+		return this.#options;
 	}
 	/**
 	* Gets the bounds shared by the chart's layout layers.
@@ -2743,6 +2848,7 @@ var Chart = class Chart {
 		this.#layers = {};
 		this.#node = null;
 		this.#observer = null;
+		this.#options = null;
 		this.#settings = null;
 		this.#window = null;
 	}
@@ -2899,6 +3005,7 @@ var Chart = class Chart {
 		if (!this.node) return;
 		const normalized = normalizeData(data, this.#settings.type, this.#settings.stacked);
 		this.#data = normalized;
+		this.#updateOptions();
 		this.#pruneVisibility();
 		this.update();
 	}
@@ -2937,12 +3044,13 @@ var Chart = class Chart {
 	setSettings(settings = {}) {
 		if (!this.node) return;
 		const inputOptions = mergeOptions(this.#inputOptions, settings);
-		const options = normalizeOptions(mergeOptions(inputOptions));
+		const options = normalizeOptions(mergeOptions(inputOptions), this.constructor.defaults);
 		const data = normalizeData(settings.data ?? this.#data, options.type, options.stacked);
 		this.#stop();
 		this.#inputOptions = inputOptions;
 		this.#settings = options;
 		this.#data = data;
+		this.#updateOptions();
 		this.#pruneVisibility();
 		this.#build();
 		if (this.#settings.responsive) this.resize();
@@ -3114,7 +3222,13 @@ var Chart = class Chart {
 			this.#legendControls = this.node.ownerDocument.createElement("div");
 			this.#legendControls.setAttribute("role", "group");
 			this.#legendControls.setAttribute("aria-label", "Chart legend");
-			this.#legendControls.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);";
+			Object.assign(this.#legendControls.style, {
+				position: "absolute",
+				width: "1px",
+				height: "1px",
+				overflow: "hidden",
+				clipPath: "inset(50%)"
+			});
 			this.node.append(this.#legendControls);
 		}
 		for (const [index, item] of items.entries()) {
@@ -3168,6 +3282,12 @@ var Chart = class Chart {
 		const description = `${this.#settings.ariaLabel}. ${title}. ${datasets.join("; ")}`;
 		this.#canvas.setAttribute("aria-label", description);
 		this.#canvas.textContent = description;
+	}
+	/**
+	* Refreshes the public snapshot after a successful data or settings update.
+	*/
+	#updateOptions() {
+		this.#options = freezeOptions(mergeOptions(this.#settings, { data: this.#data }));
 	}
 };
 

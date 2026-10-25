@@ -18,9 +18,132 @@ import Legend from './layers/legend.js';
 import RadialGrid from './layers/radial-grid.js';
 import Title from './layers/title.js';
 import Tooltip from './layers/tooltip.js';
-import { mergeOptions, normalizeOptions } from './options.js';
+import { freezeOptions, mergeOptions, normalizeOptions } from './options.js';
 import Rect from './rect.js';
 import { createScale } from './scale.js';
+
+/**
+ * @typedef {object} ChartFont
+ * @property {string} [family='"Helvetica Neue", Helvetica, Arial, sans-serif'] The CSS font family.
+ * @property {number} [size=12] The font size in CSS pixels.
+ * @property {string|number} [weight='normal'] The CSS font weight.
+ * @property {string} [style='normal'] The CSS font style.
+ * @property {number} [lineHeight=1.2] The line height as a multiple of the font size.
+ */
+
+/**
+ * @typedef {object} ChartTitleOptions
+ * @property {boolean} [display=true] Whether to show the title.
+ * @property {string} [text='Title'] The title text.
+ * @property {'top'|'right'|'bottom'|'left'} [position='top'] The title edge.
+ * @property {'start'|'center'|'end'|'left'|'right'} [align='center'] Alignment along the edge.
+ * @property {number} [padding=10] Space between the title and the chart.
+ * @property {ChartFont} [font] Font overrides; defaults to size 18 and bold weight.
+ * @property {string} [color='#334155'] The text color.
+ */
+
+/**
+ * @typedef {object} ChartLegendLabelOptions
+ * @property {number} [boxWidth=20] The swatch width in CSS pixels.
+ * @property {number} [boxHeight=12] The swatch height in CSS pixels.
+ * @property {number} [padding=10] Space around legend items.
+ * @property {ChartFont} [font] Overrides for the inherited chart font.
+ * @property {string} [color='#334155'] The text color.
+ * @property {'start'|'center'|'end'|'left'|'right'} [textAlign='start'] The label alignment.
+ */
+
+/**
+ * @typedef {object} ChartLegendOptions
+ * @property {boolean} [display=true] Whether to show the legend.
+ * @property {boolean} [interactive=true] Whether legend items toggle data visibility.
+ * @property {'top'|'right'|'bottom'|'left'} [position='top'] The legend edge.
+ * @property {'start'|'center'|'end'|'left'|'right'} [align='center'] Alignment along the edge.
+ * @property {number|null} [maxWidth=null] The maximum width in CSS pixels, or no explicit limit.
+ * @property {number|null} [maxHeight=null] The maximum height in CSS pixels, or no explicit limit.
+ * @property {ChartLegendLabelOptions} [labels] Legend swatches and text.
+ */
+
+/**
+ * @callback ChartTickCallback
+ * @param {string|number} value The category label or scale value.
+ * @param {number} index The tick index.
+ * @returns {string|number} The formatted label.
+ */
+
+/**
+ * @typedef {object} ChartGridOptions
+ * @property {boolean} [display=true] Whether to show grid lines.
+ * @property {boolean} [drawBorder=true] Whether to draw the axis border.
+ * @property {string} [borderColor='#cbd5e1'] The axis border color.
+ * @property {number} [borderWidth=1] The axis border width.
+ * @property {string} [lineColor='#e2e8f0'] The grid line color.
+ * @property {number} [lineWidth=1] The grid line width.
+ * @property {number} [tickLength=8] The tick mark length.
+ */
+
+/**
+ * @typedef {object} ChartTickOptions
+ * @property {boolean} [display=true] Whether to show tick labels.
+ * @property {boolean} [drawTicks=true] Whether to draw tick marks.
+ * @property {string} [tickColor] The tick mark color.
+ * @property {number} [padding=5] The distance between tick marks and labels.
+ * @property {ChartFont} [font] Overrides for the inherited chart font.
+ * @property {string} [color='#334155'] The label color.
+ * @property {ChartTickCallback|null} [callback=null] The label formatter.
+ */
+
+/**
+ * @typedef {object} ChartAxisOptions
+ * @property {boolean} [display=true] Whether to show the axis.
+ * @property {ChartGridOptions} [grid] The grid lines and axis border.
+ * @property {ChartTickOptions} [ticks] The tick labels and marks.
+ */
+
+/**
+ * @typedef {object} ChartRadialLabelOptions
+ * @property {boolean} [display=true] Whether to show category labels.
+ * @property {ChartFont} [font] Overrides for the inherited chart font.
+ * @property {string} [color='#334155'] The label color.
+ * @property {number} [padding=8] The distance from the outer grid ring.
+ */
+
+/**
+ * @typedef {object} ChartRadialAxisOptions
+ * @property {boolean} [display=true] Whether to show the radial axis.
+ * @property {Pick<ChartGridOptions, 'display'|'lineColor'|'lineWidth'>} [grid] The radial grid lines.
+ * @property {Pick<ChartTickOptions, 'display'|'font'|'color'|'callback'>} [ticks] The scale labels.
+ * @property {ChartRadialLabelOptions} [labels] The category labels.
+ */
+
+/**
+ * @typedef {object} ChartScaleOptions
+ * @property {ChartAxisOptions} [x] The horizontal axis.
+ * @property {ChartAxisOptions} [y] The vertical axis.
+ * @property {ChartRadialAxisOptions} [r] The polar area and radar axis.
+ */
+
+/**
+ * @typedef {object} ChartAnimationOptions
+ * @property {number} [duration=300] The duration in milliseconds; zero disables animation.
+ * @property {'linear'|'easeOutQuad'|'easeInOutQuad'} [easing='easeOutQuad'] The timing curve.
+ */
+
+/**
+ * @typedef {object} ChartLayoutOptions
+ * @property {number} [padding=20] The outer padding in CSS pixels.
+ */
+
+/**
+ * @typedef {object} ChartTooltipOptions
+ * @property {boolean} [display=true] Whether to show tooltips.
+ * @property {'cursor'|'fixed'} [position='cursor'] Follow the pointer or anchor to the data mark.
+ * @property {number} [padding=10] The inner padding in CSS pixels.
+ * @property {number} [borderRadius=6] The corner radius in CSS pixels.
+ * @property {number} [arrowSize=5] The arrow size; zero hides it.
+ * @property {string} [backgroundColor='rgba(24, 28, 36, .92)'] The background color.
+ * @property {string} [color='#fff'] The text color.
+ * @property {ChartFont} [font] Overrides for the inherited chart font.
+ */
 
 /**
  * @typedef {object} ChartOptions
@@ -28,14 +151,14 @@ import { createScale } from './scale.js';
  * @property {ChartData} [data] The category labels and datasets.
  * @property {'vertical'|'horizontal'} [orientation='vertical'] The bar direction.
  * @property {boolean} [stacked=false] Whether bar datasets share a stack.
- * @property {object} [font] The font inherited by chart layers.
- * @property {object} [title] The title text, position, and appearance.
- * @property {object} [legend] The legend position, bounds, and labels.
- * @property {object} [scales] The x and y grid and tick settings.
- * @property {object} [layout] The outer chart padding.
- * @property {object} [animation] The animation duration and easing curve.
+ * @property {ChartFont} [font] The font inherited by chart layers.
+ * @property {ChartTitleOptions} [title] The title text, position, and appearance.
+ * @property {ChartLegendOptions} [legend] The legend position, bounds, and labels.
+ * @property {ChartScaleOptions} [scales] The Cartesian and radial grid and tick settings.
+ * @property {ChartLayoutOptions} [layout] The outer chart padding.
+ * @property {ChartAnimationOptions} [animation] The animation duration and easing curve.
  * @property {number} [cutout=.6] The donut's inner radius as a fraction of its outer radius.
- * @property {object} [tooltip] The tooltip visibility, font, and colors.
+ * @property {ChartTooltipOptions} [tooltip] The tooltip visibility, font, and colors.
  * @property {boolean} [responsive=true] Whether to observe container size changes.
  * @property {string} [ariaLabel='Chart'] The accessible chart description prefix.
  */
@@ -202,6 +325,7 @@ export default class Chart {
     #legendControls = null;
     #node = null;
     #observer = null;
+    #options = null;
     #outerRect = null;
     #pixelRatio = 1;
     #pointer = null;
@@ -244,8 +368,9 @@ export default class Chart {
 
         try {
             this.#inputOptions = mergeOptions(this.constructor.defaults, options);
-            this.#settings = normalizeOptions(mergeOptions(this.#inputOptions));
+            this.#settings = normalizeOptions(mergeOptions(this.#inputOptions), this.constructor.defaults);
             this.#data = normalizeData(this.#settings.data, this.#settings.type, this.#settings.stacked);
+            this.#updateOptions();
 
             this.#canvas = node.ownerDocument.createElement('canvas');
             this.#canvas.setAttribute('role', 'img');
@@ -282,15 +407,11 @@ export default class Chart {
     }
 
     /**
-     * Gets a copy of the effective options and current data.
-     * @returns {ChartOptions|null} The options, or null after disposal.
+     * Gets the deeply frozen snapshot of the effective options and current data.
+     * @returns {Readonly<ChartOptions>|null} The options, or null after disposal.
      */
     get options() {
-        if (!this.node) {
-            return null;
-        }
-
-        return Object.freeze(mergeOptions(this.#settings, { data: this.#data }));
+        return this.#options;
     }
 
     /**
@@ -330,7 +451,10 @@ export default class Chart {
             Math.max(0, this.#width - padding * 2),
             Math.max(0, this.#height - padding * 2),
         );
-        const values = this.#settings.type === 'bar' && this.#settings.stacked ? this.#getStackTotals() : this.getValues();
+
+        const values = this.#settings.type === 'bar' && this.#settings.stacked ?
+            this.#getStackTotals() :
+            this.getValues();
 
         this.#scale = createScale(values, maxSteps);
         this.#scaleX = horizontal ? this.#scale : [0, 1];
@@ -386,6 +510,7 @@ export default class Chart {
         this.#layers = {};
         this.#node = null;
         this.#observer = null;
+        this.#options = null;
         this.#settings = null;
         this.#window = null;
     }
@@ -609,6 +734,7 @@ export default class Chart {
         const normalized = normalizeData(data, this.#settings.type, this.#settings.stacked);
 
         this.#data = normalized;
+        this.#updateOptions();
         this.#pruneVisibility();
         this.update();
     }
@@ -664,7 +790,7 @@ export default class Chart {
         }
 
         const inputOptions = mergeOptions(this.#inputOptions, settings);
-        const options = normalizeOptions(mergeOptions(inputOptions));
+        const options = normalizeOptions(mergeOptions(inputOptions), this.constructor.defaults);
         const data = normalizeData(settings.data ?? this.#data, options.type, options.stacked);
 
         this.#stop();
@@ -672,6 +798,7 @@ export default class Chart {
         this.#inputOptions = inputOptions;
         this.#settings = options;
         this.#data = data;
+        this.#updateOptions();
         this.#pruneVisibility();
 
         this.#build();
@@ -912,13 +1039,22 @@ export default class Chart {
      * Keeps native keyboard and screen-reader controls in step with the canvas legend.
      */
     #syncLegendControls() {
-        const items = this.#settings.legend.display && this.#settings.legend.interactive ? this.#layers.legend.items : [];
+        const items = this.#settings.legend.display && this.#settings.legend.interactive ?
+            this.#layers.legend.items :
+            [];
 
         if (!this.#legendControls) {
             this.#legendControls = this.node.ownerDocument.createElement('div');
             this.#legendControls.setAttribute('role', 'group');
             this.#legendControls.setAttribute('aria-label', 'Chart legend');
-            this.#legendControls.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);';
+            Object.assign(this.#legendControls.style, {
+                position: 'absolute',
+                width: '1px',
+                height: '1px',
+                overflow: 'hidden',
+                clipPath: 'inset(50%)',
+            });
+
             this.node.append(this.#legendControls);
         }
 
@@ -931,19 +1067,23 @@ export default class Chart {
                 button.type = 'button';
 
                 const { signal } = this.#eventsController;
+
                 button.addEventListener('click', () => {
                     this.#toggleLegendItem(this.#layers.legend.items[index]);
                 }, { signal });
+
                 button.addEventListener('focus', () => {
                     this.#layers.legend.setActive(this.#layers.legend.items[index]);
                     this.#layers.legend.render();
                     this.draw();
                 }, { signal });
+
                 button.addEventListener('blur', () => {
                     this.#layers.legend.setActive(null);
                     this.#layers.legend.render();
                     this.draw();
                 }, { signal });
+
                 this.#legendControls.append(button);
             }
 
@@ -991,5 +1131,12 @@ export default class Chart {
 
         this.#canvas.setAttribute('aria-label', description);
         this.#canvas.textContent = description;
+    }
+
+    /**
+     * Refreshes the public snapshot after a successful data or settings update.
+     */
+    #updateOptions() {
+        this.#options = freezeOptions(mergeOptions(this.#settings, { data: this.#data }));
     }
 }

@@ -1,3 +1,5 @@
+import { parseNumber } from './helpers.js';
+
 /**
  * @typedef {object} ChartDataset
  * @property {string} [label] The dataset label.
@@ -62,12 +64,17 @@ function normalizeColors(colors, name) {
 function normalizeValues(data, type, index) {
     return Array.from(data, (value) => {
         if (type === 'scatter') {
-            if (!value || !Number.isFinite(value.x) || !Number.isFinite(value.y)) {
+            const x = parseNumber(value?.x, NaN);
+            const y = parseNumber(value?.y, NaN);
+
+            if (!Number.isFinite(x) || !Number.isFinite(y)) {
                 throw new TypeError(`Dataset ${index} points must have finite x and y coordinates.`);
             }
 
-            return { x: value.x, y: value.y };
+            return { x, y };
         }
+
+        value = parseNumber(value, NaN);
 
         if (!Number.isFinite(value)) {
             throw new TypeError(`Dataset ${index} values must be finite numbers.`);
@@ -100,21 +107,9 @@ function normalizeDataset(dataset, index, labelCount, type) {
 
     const values = normalizeValues(dataset.data, type, index);
 
-    const borderWidth = dataset.borderWidth ?? 1;
-    const pointRadius = dataset.pointRadius ?? (type === 'scatter' ? 4 : 2);
-    const fillOpacity = dataset.fillOpacity ?? (type === 'polarArea' ? .75 : .2);
-
-    if (!Number.isFinite(borderWidth) || borderWidth < 0) {
-        throw new RangeError(`Dataset ${index} borderWidth must be a finite, nonnegative number.`);
-    }
-
-    if (!Number.isFinite(pointRadius) || pointRadius < 0) {
-        throw new RangeError(`Dataset ${index} pointRadius must be a finite, nonnegative number.`);
-    }
-
-    if (!Number.isFinite(fillOpacity) || fillOpacity < 0 || fillOpacity > 1) {
-        throw new RangeError(`Dataset ${index} fillOpacity must be between zero and one.`);
-    }
+    const borderWidth = Math.max(0, parseNumber(dataset.borderWidth, 1));
+    const pointRadius = Math.max(0, parseNumber(dataset.pointRadius, type === 'scatter' ? 4 : 2));
+    const fillOpacity = Math.max(0, Math.min(1, parseNumber(dataset.fillOpacity, type === 'polarArea' ? .75 : .2)));
 
     const circular = ['pie', 'donut', 'polarArea'].includes(type);
     const defaultColor = defaultColors[index % defaultColors.length];

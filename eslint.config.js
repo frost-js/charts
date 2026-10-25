@@ -22,6 +22,7 @@ export default [
     {
         name: '@fr0st/charts/browser-globals',
         files: [
+            'demo/**/*.js',
             'test/**/*.js',
         ],
         languageOptions: {

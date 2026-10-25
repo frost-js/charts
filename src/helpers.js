@@ -1,4 +1,8 @@
 /**
+ * @import { ChartFont } from './chart.js';
+ */
+
+/**
  * Measures text using a font-metric fallback for older canvas implementations.
  * @param {CanvasRenderingContext2D} context The measuring context.
  * @param {string|number} text The text to measure.
@@ -17,9 +21,40 @@ export function measureText(context, text) {
 }
 
 /**
+ * Parses a finite numeric value, using a fallback for missing or invalid input.
+ * @param {*} value The value to parse.
+ * @param {number} fallback The fallback value.
+ * @returns {number} The parsed value or fallback.
+ */
+export function parseNumber(value, fallback) {
+    if (
+        !['number', 'string'].includes(typeof value) ||
+        `${value}`.trim() === ''
+    ) {
+        return fallback;
+    }
+
+    const number = Number(value);
+
+    return Number.isFinite(number) ? number : fallback;
+}
+
+/**
+ * Parses a positive finite number, using a fallback for invalid input.
+ * @param {*} value The value to parse.
+ * @param {number} fallback The positive fallback value.
+ * @returns {number} The positive number or fallback.
+ */
+export function parsePositiveNumber(value, fallback) {
+    const number = parseNumber(value, fallback);
+
+    return number > 0 ? number : fallback;
+}
+
+/**
  * Sets a canvas font from the resolved chart font options.
  * @param {CanvasRenderingContext2D} context The drawing context.
- * @param {object} font The resolved font options.
+ * @param {ChartFont} font The resolved font options.
  */
 export function updateFont(context, font) {
     const style = font.style || 'normal';

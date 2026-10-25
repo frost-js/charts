@@ -7,7 +7,8 @@
     <title>Scatter plots · Frost Charts</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fr0st/ui@4/dist/frost-ui.min.css">
     <link rel="stylesheet" href="assets/demo.css">
-    <script src="../dist/frost-charts.js"></script>
+    <script src="../dist/frost-charts.js" defer></script>
+    <script src="assets/scatter.js" defer></script>
 </head>
 
 <body>
@@ -23,7 +24,7 @@
             <a class="nav-link" href="bar-stacked.html">Stacked bars</a>
             <a class="nav-link" href="line.html">Line series</a>
             <a class="nav-link" href="area.html">Area series</a>
-            <a class="nav-link" href="pie.htm">Pie slices</a>
+            <a class="nav-link" href="pie.html">Pie slices</a>
             <a class="nav-link" href="donut.html">Donut slices</a>
             <a class="nav-link active" href="scatter.html" aria-current="page">Scatter plots</a>
             <a class="nav-link" href="polar-area.html">Polar area</a>
@@ -69,48 +70,6 @@
             Source and API: <a href="../README.md">README</a> · <a href="https://github.com/frost-js/charts">GitHub</a>
         </footer>
     </main>
-
-    <script>
-        const data = {
-            datasets: [
-                {
-                    label: 'Group A',
-                    data: [{ x: 1, y: 3 }, { x: 2, y: 7 }, { x: 5, y: 6 }, { x: 9, y: 12 }, { x: 10, y: 9 }],
-                    pointRadius: 5,
-                },
-                {
-                    label: 'Group B',
-                    data: [{ x: 2, y: 2 }, { x: 4, y: 4 }, { x: 8, y: 7 }],
-                    pointRadius: 5,
-                },
-            ],
-        };
-        const chart = new Chart(document.getElementById('chart'), {
-            type: 'scatter',
-            data,
-            title: { display: false },
-            legend: { position: 'bottom' },
-        });
-
-        document.getElementById('update-data').addEventListener('click', () => {
-            const datasets = chart.getData();
-
-            for (const dataset of datasets) {
-                dataset.data = dataset.data.map((point, index) => ({
-                    x: point.x,
-                    y: point.y + (index % 2 ? 2 : -2),
-                }));
-            }
-
-            chart.setData({ labels: data.labels, datasets });
-            document.getElementById('chart-status').textContent = 'Sample values updated.';
-        });
-
-        document.getElementById('reset-data').addEventListener('click', () => {
-            chart.setData(data);
-            document.getElementById('chart-status').textContent = 'Showing the original data.';
-        });
-    </script>
 </body>
 
 </html>

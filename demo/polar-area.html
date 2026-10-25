@@ -7,7 +7,8 @@
     <title>Polar area · Frost Charts</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fr0st/ui@4/dist/frost-ui.min.css">
     <link rel="stylesheet" href="assets/demo.css">
-    <script src="../dist/frost-charts.js"></script>
+    <script src="../dist/frost-charts.js" defer></script>
+    <script src="assets/polar-area.js" defer></script>
 </head>
 
 <body>
@@ -23,7 +24,7 @@
             <a class="nav-link" href="bar-stacked.html">Stacked bars</a>
             <a class="nav-link" href="line.html">Line series</a>
             <a class="nav-link" href="area.html">Area series</a>
-            <a class="nav-link" href="pie.htm">Pie slices</a>
+            <a class="nav-link" href="pie.html">Pie slices</a>
             <a class="nav-link" href="donut.html">Donut slices</a>
             <a class="nav-link" href="scatter.html">Scatter plots</a>
             <a class="nav-link active" href="polar-area.html" aria-current="page">Polar area</a>
@@ -69,41 +70,6 @@
             Source and API: <a href="../README.md">README</a> · <a href="https://github.com/frost-js/charts">GitHub</a>
         </footer>
     </main>
-
-    <script>
-        const data = {
-            labels: ['Direct', 'Search', 'Social', 'Referral', 'Email'],
-            datasets: [
-                {
-                    label: 'Visits',
-                    data: [20, 5, 50, 90, 13],
-                    borderWidth: 0,
-                },
-            ],
-        };
-        const chart = new Chart(document.getElementById('chart'), {
-            type: 'polarArea',
-            data,
-            title: { display: false },
-            legend: { position: 'bottom' },
-        });
-
-        document.getElementById('update-data').addEventListener('click', () => {
-            const datasets = chart.getData();
-
-            for (const dataset of datasets) {
-                dataset.data.push(dataset.data.shift());
-            }
-
-            chart.setData({ labels: data.labels, datasets });
-            document.getElementById('chart-status').textContent = 'Values shifted to the next category.';
-        });
-
-        document.getElementById('reset-data').addEventListener('click', () => {
-            chart.setData(data);
-            document.getElementById('chart-status').textContent = 'Showing the original data.';
-        });
-    </script>
 </body>
 
 </html>
