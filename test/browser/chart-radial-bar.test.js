@@ -5,6 +5,55 @@ test.describe('Chart bar and radial options', () => {
     test.beforeEach(setupChart);
 
     test.describe('bar orientation and stacking', () => {
+        test('horizontal bars use a numeric x axis and top-to-bottom category labels', async ({ page }) => {
+            const ticks = await page.evaluate(() => {
+                const x = [];
+                const y = [];
+
+                window.makeChart({
+                    orientation: 'horizontal',
+                    scales: {
+                        x: {
+                            ticks: {
+                                callback: (value) => {
+                                    x.push(value);
+
+                                    return value;
+                                },
+                            },
+                        },
+                        y: {
+                            ticks: {
+                                callback: (value) => {
+                                    y.push(value);
+
+                                    return value;
+                                },
+                            },
+                        },
+                    },
+                });
+
+                return { x, y };
+            });
+
+            expect(ticks.x).toContain(0);
+            expect(ticks.x).toContain(20);
+            expect(ticks.y).toEqual(['A', 'B']);
+        });
+
+        test('horizontal bar hit regions follow the top-to-bottom category order', async ({ page }) => {
+            await page.evaluate(() => window.makeChart({ orientation: 'horizontal', tooltip: { position: 'fixed' } }));
+
+            const canvas = page.locator('canvas');
+            const bounds = await canvas.boundingBox();
+
+            await page.mouse.move(bounds.x + 160, bounds.y + 110);
+            await expect(canvas).toHaveAttribute('aria-description', 'A. Sales: 10');
+            await page.mouse.move(bounds.x + 500, bounds.y + 290);
+            await expect(canvas).toHaveAttribute('aria-description', 'B. Sales: 20');
+        });
+
         for (const orientation of ['vertical', 'horizontal']) {
             test(`${orientation} stacks separate positive and negative totals and rescale hidden datasets`, async ({ page }) => {
                 const result = await page.evaluate((direction) => {
@@ -46,53 +95,6 @@ test.describe('Chart bar and radial options', () => {
                 ]);
             });
         }
-
-        test('horizontal bars use a numeric x axis and top-to-bottom category labels', async ({ page }) => {
-            const ticks = await page.evaluate(() => {
-                const x = [];
-                const y = [];
-
-                window.makeChart({
-                    orientation: 'horizontal',
-                    scales: {
-                        x: {
-                            ticks: {
-                                callback: (value) => {
-                                    x.push(value);
-
-                                    return value;
-                                },
-                            },
-                        },
-                        y: {
-                            ticks: {
-                                callback: (value) => {
-                                    y.push(value);
-
-                                    return value;
-                                },
-                            },
-                        },
-                    },
-                });
-
-                return { x, y };
-            });
-
-            expect(ticks.x).toContain(0);
-            expect(ticks.x).toContain(20);
-            expect(ticks.y).toEqual(['A', 'B']);
-
-            await page.evaluate(() => window.makeChart({ orientation: 'horizontal', tooltip: { position: 'fixed' } }));
-
-            const canvas = page.locator('canvas');
-            const bounds = await canvas.boundingBox();
-
-            await page.mouse.move(bounds.x + 160, bounds.y + 110);
-            await expect(canvas).toHaveAttribute('aria-description', 'A. Sales: 10');
-            await page.mouse.move(bounds.x + 500, bounds.y + 290);
-            await expect(canvas).toHaveAttribute('aria-description', 'B. Sales: 20');
-        });
 
         test('overflowing stacks leave the existing data intact', async ({ page }) => {
             await page.evaluate(() => window.makeChart());
@@ -153,7 +155,10 @@ test.describe('Chart bar and radial options', () => {
                 return { top: alpha(300, 110), right: alpha(480, 200), center: alpha(300, 200), outside: alpha(450, 100) };
             });
 
-            expect(pixels).toEqual({ top: 255, right: 255, center: 51, outside: 0 });
+            expect(pixels.top).toBe(255);
+            expect(pixels.right).toBe(255);
+            expect(pixels.center).toBe(51);
+            expect(pixels.outside).toBe(0);
 
             const canvas = page.locator('canvas');
             const bounds = await canvas.boundingBox();
@@ -164,31 +169,6 @@ test.describe('Chart bar and radial options', () => {
     });
 
     test.describe('radial scales', () => {
-        for (const type of ['radar', 'polarArea']) {
-            test(`${type} handles empty and zero data, resize, and negative-value rejection`, async ({ page }) => {
-                const result = await page.evaluate((chartType) => {
-                    window.makeChart({ type: chartType, data: { labels: [], datasets: [] } });
-                    window.chart.setData({ labels: ['Only'], datasets: [{ data: [0] }] });
-
-                    let rejected = false;
-
-                    try {
-                        window.chart.setData({ labels: ['Bad'], datasets: [{ data: [-1] }] });
-                    } catch {
-                        rejected = true;
-                    }
-
-                    document.getElementById('chart').style.width = '60px';
-                    document.getElementById('chart').style.height = '60px';
-                    window.chart.resize();
-
-                    return { rejected, values: window.chart.getValues(), width: document.querySelector('canvas').width };
-                }, type);
-
-                expect(result).toEqual({ rejected: true, values: [0], width: 60 });
-            });
-        }
-
         for (const type of ['radar', 'polarArea']) {
             test(`${type} centers radial tick labels above the data fills`, async ({ page }) => {
                 const labels = await page.evaluate((chartType) => {
@@ -214,8 +194,53 @@ test.describe('Chart bar and radial options', () => {
                 }, type);
 
                 expect(labels.length).toBeGreaterThan(1);
-                expect(labels.every((label) => label.align === 'center' && label.baseline === 'middle')).toBe(true);
+                for (const label of labels) {
+                    expect(label.align, String(label.text)).toBe('center');
+                    expect(label.baseline, String(label.text)).toBe('middle');
+                }
+
                 expect(new Set(labels.map((label) => label.x)).size).toBe(1);
+            });
+        }
+    });
+
+    test.describe('radial data boundaries', () => {
+        for (const type of ['radar', 'polarArea']) {
+            test.describe(type, () => {
+                test('updates empty data to zero values', async ({ page }) => {
+                    await page.evaluate((type) => window.makeChart({ type, data: { labels: [], datasets: [] } }), type);
+
+                    expect(await page.evaluate(() => window.chart.getValues())).toEqual([]);
+
+                    await page.evaluate(() => window.chart.setData({ labels: ['Only'], datasets: [{ data: [0] }] }));
+
+                    expect(await page.evaluate(() => window.chart.getValues())).toEqual([0]);
+                });
+
+                test('resizes zero-valued data in a narrow container', async ({ page }) => {
+                    await page.evaluate((type) => {
+                        window.makeChart({ type, data: { labels: ['Only'], datasets: [{ data: [0] }] } });
+                        document.getElementById('chart').style.width = '60px';
+                        document.getElementById('chart').style.height = '60px';
+                        window.chart.resize();
+                    }, type);
+
+                    await expect(page.locator('canvas')).toHaveAttribute('width', '60');
+                    expect(await page.evaluate(() => window.chart.getValues())).toEqual([0]);
+                });
+
+                test('rejects negative values without replacing existing data', async ({ page }) => {
+                    await page.evaluate((type) => window.makeChart({
+                        type, data: { labels: ['Only'], datasets: [{ data: [0] }] },
+                    }), type);
+
+                    await expect(page.evaluate(() => window.chart.setData({
+                        labels: ['Bad'], datasets: [{ data: [-1] }],
+                    }))).rejects.toThrow('Dataset 0 circular and radial values must be nonnegative.');
+
+                    expect(await page.evaluate(() => window.chart.getLabels())).toEqual(['Only']);
+                    expect(await page.evaluate(() => window.chart.getValues())).toEqual([0]);
+                });
             });
         }
     });

@@ -20,7 +20,9 @@ test.describe('Chart rendering', () => {
                     };
                 }, type);
 
-                expect(result).toEqual({ painted: true, labels: ['A', 'B'], values: [10, 20] });
+                expect(result.painted).toBe(true);
+                expect(result.labels).toEqual(['A', 'B']);
+                expect(result.values).toEqual([10, 20]);
 
                 const positions = {
                     bar: [160, 300],
@@ -38,26 +40,33 @@ test.describe('Chart rendering', () => {
                 await expect(page.locator('canvas')).toHaveAttribute('aria-label', /A 10, B 20/);
             });
 
-            test(`${type} handles empty, zero, and single-value datasets`, async ({ page }) => {
-                await page.evaluate((type) => {
-                    window.makeChart({ type, data: { labels: [], datasets: [] } });
-
-                    for (const data of [
-                        { labels: ['Only'], datasets: [] },
-                        { labels: ['Only'], datasets: [{ data: [0] }] },
-                        { labels: ['Only'], datasets: [{ data: [3] }] },
-                    ]) {
-                        window.chart.setData(data);
+            for (const { name, data } of [
+                { name: 'empty data', data: { labels: [], datasets: [] } },
+                { name: 'labels without datasets', data: { labels: ['Only'], datasets: [] } },
+                { name: 'zero values', data: { labels: ['Only'], datasets: [{ data: [0] }] } },
+                { name: 'a single value', data: { labels: ['Only'], datasets: [{ data: [3] }] } },
+            ]) {
+                test(`${type} renders ${name} with a finite scale`, async ({ page }) => {
+                    await page.evaluate(({ type, data }) => {
+                        window.makeChart({ type, data });
                         window.chart.render();
+                    }, { type, data });
 
-                        if (!window.chart.getScale().every(Number.isFinite)) {
-                            throw new Error('Nonfinite scale');
-                        }
+                    const scale = await page.evaluate(() => window.chart.getScale());
+
+                    expect(scale.length).toBeGreaterThanOrEqual(2);
+
+                    for (const [index, tick] of scale.entries()) {
+                        expect(Number.isFinite(tick), `Tick ${index}`).toBe(true);
                     }
-                }, type);
 
-                await expect(page.locator('canvas')).toHaveAttribute('aria-label', /Only 3/);
-            });
+                    if (data.datasets.length) {
+                        await expect(page.locator('canvas')).toHaveAttribute(
+                            'aria-label', new RegExp(`Only ${data.datasets[0].data[0]}`),
+                        );
+                    }
+                });
+            }
         }
 
         test('negative and positive bars extend on opposite sides of zero', async ({ page }) => {
@@ -204,6 +213,66 @@ test.describe('Chart rendering', () => {
             });
 
             await expect(page.locator('canvas')).toHaveAttribute('width', '600');
+        });
+    });
+
+    test.describe('legend alignment', () => {
+        for (const position of ['left', 'right']) {
+            test(`${position} legends align swatches and labels along a shared edge`, async ({ page }) => {
+                const labels = await page.evaluate((legendPosition) => {
+                    const recorded = [];
+                    const fillText = CanvasRenderingContext2D.prototype.fillText;
+
+                    CanvasRenderingContext2D.prototype.fillText = function(text, x, y, ...args) {
+                        if (text === 'Short' || text === 'A longer series name') {
+                            recorded.push({ text, x, y });
+                        }
+
+                        return fillText.call(this, text, x, y, ...args);
+                    };
+
+                    window.makeChart({
+                        legend: { display: true, position: legendPosition },
+                        data: {
+                            labels: ['A'],
+                            datasets: [{ label: 'Short', data: [1] }, { label: 'A longer series name', data: [2] }],
+                        },
+                    });
+
+                    CanvasRenderingContext2D.prototype.fillText = fillText;
+
+                    return recorded.slice(0, 2);
+                }, position);
+
+                expect(labels[0].x).toBe(labels[1].x);
+                expect(labels[0].y).toBeLessThan(labels[1].y);
+            });
+        }
+    });
+
+    test.describe('default palette', () => {
+        test('the default palette supplies twelve colors before repeating', async ({ page }) => {
+            const colors = await page.evaluate(() => {
+                window.makeChart({
+                    data: {
+                        labels: ['A'],
+                        datasets: Array.from({ length: 13 }, () => ({ data: [1] })),
+                    },
+                });
+
+                const series = window.chart.getData().map((dataset) => dataset.backgroundColor[0]);
+
+                window.chart.setSettings({
+                    type: 'donut',
+                    data: { labels: ['A'], datasets: [{ data: [1] }] },
+                });
+
+                return { series, slices: window.chart.getData()[0].backgroundColor };
+            });
+
+            expect(new Set(colors.series.slice(0, 12)).size).toBe(12);
+            expect(colors.series[12]).toBe(colors.series[0]);
+            expect(colors.slices).toEqual(colors.series.slice(0, 12));
         });
     });
 });

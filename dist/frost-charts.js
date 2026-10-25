@@ -2537,7 +2537,7 @@
 	/**
 	* @typedef {object} ChartTooltipOptions
 	* @property {boolean} [display=true] Whether to show tooltips.
-	* @property {'cursor'|'fixed'} [position='cursor'] Follow the pointer or anchor to the data mark.
+	* @property {'cursor'|'fixed'} [position='fixed'] Anchor to the data mark or follow the pointer.
 	* @property {number} [padding=10] The inner padding in CSS pixels.
 	* @property {number} [borderRadius=6] The corner radius in CSS pixels.
 	* @property {number} [arrowSize=5] The arrow size; zero hides it.
@@ -2591,7 +2591,7 @@
 				padding: 10,
 				borderRadius: 6,
 				arrowSize: 5,
-				position: "cursor",
+				position: "fixed",
 				backgroundColor: "rgba(24, 28, 36, .92)",
 				color: "#fff",
 				font: {}

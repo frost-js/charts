@@ -5,131 +5,66 @@ test.describe('Chart', () => {
     test.beforeEach(setupChart);
 
     test.describe('#init', () => {
-        test('rejects negative pies and cleans up failed construction', async ({ page }) => {
-            const result = await page.evaluate(() => {
-                let error;
-                const node = document.getElementById('chart');
+        test('creates a standalone chart and registers its container', async ({ page }) => {
+            const instance = await page.evaluateHandle(() => Chart.init(document.getElementById('chart')));
 
-                try {
-                    new Chart(node, {
-                        type: 'pie',
-                        data: { labels: ['A'], datasets: [{ data: [-1] }] },
-                    });
-                } catch (caught) {
-                    error = caught.message;
-                }
+            expect(await instance.evaluate((chart) => chart instanceof Chart)).toBe(true);
+            expect(await instance.evaluate((chart) => chart.node === document.getElementById('chart'))).toBe(true);
+            await expect(page.locator('canvas')).toHaveCount(1);
 
-                const canvasCount = node.querySelectorAll('canvas').length;
-                window.makeChart();
-                window.chart.setData({ labels: ['A'], datasets: [{ data: [-1] }] });
-                let rejected = false;
-
-                try {
-                    window.chart.setSettings({ type: 'pie' });
-                } catch {
-                    rejected = true;
-                }
-
-                return {
-                    error,
-                    canvasCount,
-                    rejected,
-                    type: window.chart.options.type,
-                    registered: Chart.init(node) === window.chart,
-                };
-            });
-
-            expect(result).toEqual({
-                error: expect.stringContaining('nonnegative'),
-                canvasCount: 0,
-                rejected: true,
-                type: 'bar',
-                registered: true,
-            });
+            expect(await page.evaluate(() => 'UI' in window)).toBe(false);
+            expect(await page.evaluate(() => 'fQuery' in window)).toBe(false);
         });
 
-        test('initialization reuses charts and disposal releases the container and listeners', async ({ page }) => {
-            const result = await page.evaluate(() => {
-                const node = document.getElementById('chart');
-                const chart = new Chart(node, { animation: { duration: 0 } });
-                const canvas = node.querySelector('canvas');
-                const same = Chart.init(node) === chart;
-                let duplicateRejected = false;
+        test('reuses the registered chart', async ({ page }) => {
+            const instance = await page.evaluateHandle(() => Chart.init(document.getElementById('chart')));
 
-                try {
-                    new Chart(node);
-                } catch {
-                    duplicateRejected = true;
-                }
+            expect(await instance.evaluate((chart) => Chart.init(chart.node) === chart)).toBe(true);
+            await expect(page.locator('canvas')).toHaveCount(1);
+        });
 
-                chart.dispose();
+        test('rejects duplicate construction without replacing the registered chart', async ({ page }) => {
+            const instance = await page.evaluateHandle(() => Chart.init(document.getElementById('chart')));
 
-                // These would access disposed state if their listeners were still attached.
-                canvas.dispatchEvent(new PointerEvent('pointerleave'));
-                window.dispatchEvent(new Event('resize'));
+            await expect(page.evaluate(() => new Chart(document.getElementById('chart')))).rejects.toThrow(
+                'This container already has a chart. Use Chart.init() to reuse it.',
+            );
 
-                const replacement = Chart.init(node, { animation: { duration: 0 } });
+            expect(await instance.evaluate((chart) => Chart.init(chart.node) === chart)).toBe(true);
+            await expect(page.locator('canvas')).toHaveCount(1);
+        });
 
-                return {
-                    same,
-                    duplicateRejected,
-                    disposed: chart.node === null,
-                    replaced: replacement !== chart,
-                    canvases: node.querySelectorAll('canvas').length,
-                    hasUI: 'UI' in window,
-                    hasQuery: 'fQuery' in window,
-                };
-            });
+        test('cleans up failed construction and allows initialization afterward', async ({ page }) => {
+            await expect(page.evaluate(() => new Chart(document.getElementById('chart'), {
+                type: 'pie',
+                data: { labels: ['A'], datasets: [{ data: [-1] }] },
+            }))).rejects.toThrow('Dataset 0 circular and radial values must be nonnegative.');
 
-            expect(result).toEqual({
-                same: true,
-                duplicateRejected: true,
-                disposed: true,
-                replaced: true,
-                canvases: 1,
-                hasUI: false,
-                hasQuery: false,
-            });
+            await expect(page.locator('canvas')).toHaveCount(0);
+
+            const instance = await page.evaluateHandle(() => Chart.init(document.getElementById('chart')));
+
+            expect(await instance.evaluate((chart) => chart instanceof Chart)).toBe(true);
+            expect(await instance.evaluate((chart) => Chart.init(chart.node) === chart)).toBe(true);
+            await expect(page.locator('canvas')).toHaveCount(1);
         });
     });
 
-    test.describe('#dispose', () => {
-        test('resize tracks the container and disposal preserves original children', async ({ page }) => {
+    test.describe('#resize', () => {
+        test('tracks changes to the container dimensions', async ({ page }) => {
             await page.evaluate(() => {
-                const node = document.getElementById('chart');
-                node.innerHTML = '<span id="original">Original content</span>';
                 window.makeChart();
+
+                const node = document.getElementById('chart');
+
                 node.style.width = '350px';
                 node.style.height = '240px';
             });
 
             await expect(page.locator('canvas')).toHaveAttribute('width', '350');
             await expect(page.locator('canvas')).toHaveAttribute('height', '240');
-            const result = await page.evaluate(() => {
-                const node = document.getElementById('chart');
-                window.chart.dispose();
-                window.chart.dispose();
-                window.chart.update();
-                window.chart.render();
-                window.chart.resize();
-                return {
-                    node: window.chart.node,
-                    options: window.chart.options,
-                    canvases: node.querySelectorAll('canvas').length,
-                    children: node.innerHTML,
-                };
-            });
-
-            expect(result).toEqual({
-                node: null,
-                options: null,
-                canvases: 0,
-                children: '<span id="original">Original content</span>',
-            });
         });
-    });
 
-    test.describe('#resize', () => {
         test('hidden chart recovers when shown and supports manual resize', async ({ page }) => {
             await page.evaluate(() => {
                 document.getElementById('chart').style.display = 'none';
@@ -141,7 +76,7 @@ test.describe('Chart', () => {
             await expect(page.locator('canvas')).toHaveAttribute('width', '600');
         });
 
-        test('auto-height containers stabilize and retain their original content', async ({ page }) => {
+        test('auto-height containers stabilize across repeated resizes', async ({ page }) => {
             await page.evaluate(() => {
                 const node = document.getElementById('chart');
 
@@ -159,24 +94,97 @@ test.describe('Chart', () => {
 
             await expect(page.locator('canvas')).toHaveAttribute('height', '300');
         });
-    });
 
-    test.describe('high DPI', () => {
-        test.use({ deviceScaleFactor: 2 });
-
-        test('high DPI uses a larger backing canvas without changing hit coordinates', async ({ page }) => {
+        test('enabling responsive sizing measures changes made while it was disabled', async ({ page }) => {
             await page.evaluate(() => {
-                new Chart(document.getElementById('chart'), {
-                    data: { labels: ['A'], datasets: [{ data: [1] }] },
-                    legend: { display: false },
-                    scales: { x: { display: false }, y: { display: false } },
-                });
+                window.makeChart({ responsive: false });
+                document.getElementById('chart').style.width = '320px';
             });
 
-            await expect(page.locator('canvas')).toHaveAttribute('width', '1200');
-            const rect = await page.locator('canvas').boundingBox();
-            await page.mouse.move(rect.x + 300, rect.y + 200);
-            await expect(page.locator('canvas')).toHaveAttribute('aria-description', 'A. Dataset 1: 1');
+            await expect(page.locator('canvas')).toHaveAttribute('width', '600');
+
+            await page.evaluate(() => window.chart.setSettings({ responsive: true }));
+
+            await expect(page.locator('canvas')).toHaveAttribute('width', '320');
+        });
+
+        test.describe('high DPI', () => {
+            test.use({ deviceScaleFactor: 2 });
+
+            test('high DPI uses a larger backing canvas without changing hit coordinates', async ({ page }) => {
+                await page.evaluate(() => {
+                    new Chart(document.getElementById('chart'), {
+                        data: { labels: ['A'], datasets: [{ data: [1] }] },
+                        legend: { display: false },
+                        scales: { x: { display: false }, y: { display: false } },
+                    });
+                });
+
+                await expect(page.locator('canvas')).toHaveAttribute('width', '1200');
+                const rect = await page.locator('canvas').boundingBox();
+                await page.mouse.move(rect.x + 300, rect.y + 200);
+                await expect(page.locator('canvas')).toHaveAttribute('aria-description', 'A. Dataset 1: 1');
+            });
+        });
+    });
+
+    test.describe('#dispose', () => {
+        test.beforeEach(async ({ page }) => {
+            await page.evaluate(() => {
+                document.getElementById('chart').innerHTML = '<span id="original">Original content</span>';
+                window.makeChart();
+            });
+        });
+
+        test('removes generated markup and preserves original children', async ({ page }) => {
+            await page.evaluate(() => window.chart.dispose());
+
+            expect(await page.evaluate(() => window.chart.node)).toBeNull();
+            expect(await page.evaluate(() => window.chart.options)).toBeNull();
+            await expect(page.locator('canvas')).toHaveCount(0);
+            await expect(page.locator('#chart > *')).toHaveCount(1);
+            await expect(page.locator('#original')).toHaveText('Original content');
+        });
+
+        test('allows repeated disposal and rendering calls after disposal', async ({ page }) => {
+            await page.evaluate(() => {
+                window.chart.dispose();
+                window.chart.dispose();
+                window.chart.update();
+                window.chart.render();
+                window.chart.resize();
+            });
+
+            expect(await page.evaluate(() => window.chart.node)).toBeNull();
+            await expect(page.locator('canvas')).toHaveCount(0);
+        });
+
+        test('releases listeners on the removed canvas and window', async ({ page }) => {
+            await page.evaluate(() => {
+                const canvas = document.querySelector('canvas');
+
+                window.chart.dispose();
+
+                // These listeners would access cleared state if disposal left them attached.
+                canvas.dispatchEvent(new PointerEvent('pointerleave'));
+                window.dispatchEvent(new Event('resize'));
+            });
+
+            await expect(page.locator('canvas')).toHaveCount(0);
+        });
+
+        test('releases registration so the container can be reused', async ({ page }) => {
+            const previous = await page.evaluateHandle(() => window.chart);
+
+            await page.evaluate(() => {
+                window.chart.dispose();
+                window.chart = Chart.init(document.getElementById('chart'));
+            });
+
+            expect(await previous.evaluate((chart) => chart.node)).toBeNull();
+            expect(await previous.evaluate((chart) => window.chart === chart)).toBe(false);
+            expect(await page.evaluate(() => Chart.init(document.getElementById('chart')) === window.chart)).toBe(true);
+            await expect(page.locator('canvas')).toHaveCount(1);
         });
     });
 });

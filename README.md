@@ -108,7 +108,7 @@ The original option groups remain available. Area and scatter reuse the line ren
 | `layout.padding` | `20` | Outer padding in CSS pixels. |
 | `animation.duration` | `300` | Animation duration for all chart types in milliseconds. Set `0` to disable; reduced-motion preferences disable it automatically. |
 | `animation.easing` | `'easeOutQuad'` | `'linear'`, `'easeOutQuad'`, or `'easeInOutQuad'`. |
-| `tooltip.position` | `'cursor'` | Follow the cursor, or use `'fixed'` to anchor beside the hovered mark. Placement flips near edges and stays stable while moving within a mark. |
+| `tooltip.position` | `'fixed'` | Anchor beside the hovered mark, or use `'cursor'` to follow the pointer. Placement flips near edges and stays stable while moving within a mark. |
 | `tooltip.display` | `true` | Shows a canvas tooltip for the hovered mark. |
 | `tooltip.padding` | `10` | Tooltip padding in CSS pixels. |
 | `tooltip.borderRadius` | `6` | Tooltip corner radius in CSS pixels. |

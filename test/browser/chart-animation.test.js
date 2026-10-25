@@ -6,6 +6,93 @@ test.describe('Chart animation', () => {
 
     test.use({ mockClock: true });
 
+    test.describe('duration and reduced motion', () => {
+        test('uses a 300ms duration by default', async ({ page }) => {
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+            await page.evaluate(() => window.makeChart({ type: 'line', animation: Chart.defaults.animation }));
+
+            expect(await page.evaluate(() => window.chart.options.animation.duration)).toBe(300);
+
+            await page.clock.runFor(350);
+
+            const completed = await page.locator('canvas').evaluate((node) => node.toDataURL());
+
+            await page.evaluate(() => window.chart.render());
+            expect(await page.locator('canvas').evaluate((node) => node.toDataURL())).toBe(completed);
+        });
+
+        for (const type of ['bar', 'line', 'pie', 'area', 'donut', 'radar', 'polarArea']) {
+            for (const { name, reducedMotion, duration } of [
+                { name: 'reduced motion', reducedMotion: 'reduce', duration: 1000 },
+                { name: 'zero duration', reducedMotion: 'no-preference', duration: 0 },
+            ]) {
+                test(`${type} respects ${name}`, async ({ page }) => {
+                    await page.emulateMedia({ reducedMotion });
+                    await page.evaluate(({ type, duration }) => window.makeChart({
+                        type, animation: { duration },
+                    }), { type, duration });
+
+                    const frame = () => page.locator('canvas').evaluate((canvas) => canvas.toDataURL());
+                    const immediate = await frame();
+
+                    await page.clock.runFor(500);
+                    expect(await frame()).toBe(immediate);
+
+                    await page.evaluate(() => window.chart.render());
+                    expect(await frame()).toBe(immediate);
+                });
+            }
+        }
+
+        test('clamps negative duration to zero on update', async ({ page }) => {
+            await page.evaluate(() => {
+                window.makeChart();
+                window.chart.setSettings({ animation: { duration: -1 } });
+            });
+
+            expect(await page.evaluate(() => window.chart.options.animation.duration)).toBe(0);
+        });
+    });
+
+    test.describe('easing', () => {
+        test('ease-out advances sooner than linear while ease-in-out starts more slowly', async ({ page }) => {
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+            const positions = {};
+
+            for (const easing of ['linear', 'easeOutQuad', 'easeInOutQuad']) {
+                await page.evaluate((curve) => {
+                    window.makeChart({
+                        type: 'line',
+                        animation: { duration: 1000, easing: curve },
+                        data: {
+                            labels: ['A'],
+                            datasets: [{ data: [10], backgroundColor: '#ff0000', borderWidth: 0, pointRadius: 12 }],
+                        },
+                    });
+                }, easing);
+                await page.clock.runFor(250);
+
+                positions[easing] = await page.locator('canvas').evaluate((node) => {
+                    const pixels = node.getContext('2d').getImageData(300, 0, 1, node.height).data;
+                    const rows = [];
+
+                    for (let y = 0; y < node.height; y++) {
+                        if (pixels[y * 4 + 3]) {
+                            rows.push(y);
+                        }
+                    }
+
+                    return (rows[0] + rows.at(-1)) / 2;
+                });
+            }
+
+            expect(positions.easeOutQuad).toBeLessThan(positions.linear - 40);
+            expect(positions.easeInOutQuad).toBeGreaterThan(positions.linear + 20);
+        });
+    });
+
     test.describe('transitions', () => {
         for (const type of ['bar', 'line', 'pie', 'area', 'donut', 'radar', 'polarArea']) {
             test(`${type} animates initial geometry, updates, and interrupted transitions`, async ({ page }) => {
@@ -64,69 +151,6 @@ test.describe('Chart animation', () => {
                 await page.evaluate(() => window.chart.render());
                 expect(await frame()).toBe(finished);
             });
-
-            test(`${type} cancels animation on render, resize, and disposal`, async ({ page }) => {
-                await page.emulateMedia({ reducedMotion: 'no-preference' });
-                await page.evaluate((chartType) => {
-                    window.drawCount = 0;
-
-                    const draw = Chart.prototype.draw;
-
-                    Chart.prototype.draw = function() {
-                        window.drawCount++;
-
-                        return draw.call(this);
-                    };
-
-                    window.makeChart({ type: chartType, animation: { duration: 1000, easing: 'linear' } });
-                }, type);
-
-                await page.clock.runFor(250);
-                await page.evaluate(() => window.chart.render());
-
-                const rendered = await page.evaluate(() => window.drawCount);
-
-                await page.clock.runFor(1000);
-                expect(await page.evaluate(() => window.drawCount)).toBe(rendered);
-
-                await page.evaluate(() => {
-                    window.chart.run();
-                    document.getElementById('chart').style.width = '500px';
-                    window.chart.resize();
-                });
-
-                const resized = await page.evaluate(() => window.drawCount);
-
-                await page.clock.runFor(1000);
-                expect(await page.evaluate(() => window.drawCount)).toBe(resized);
-
-                await page.evaluate(() => {
-                    window.chart.run();
-                    window.chart.dispose();
-                });
-
-                const disposed = await page.evaluate(() => window.drawCount);
-
-                await page.clock.runFor(1000);
-                expect(await page.evaluate(() => window.drawCount)).toBe(disposed);
-            });
-
-            test(`${type} respects reduced motion and zero duration`, async ({ page }) => {
-                for (const reducedMotion of ['reduce', 'no-preference']) {
-                    await page.emulateMedia({ reducedMotion });
-                    await page.evaluate(({ chartType, duration }) => {
-                        window.makeChart({ type: chartType, animation: { duration } });
-                    }, { chartType: type, duration: reducedMotion === 'reduce' ? 1000 : 0 });
-
-                    const immediate = await page.locator('canvas').evaluate((canvas) => canvas.toDataURL());
-
-                    await page.clock.runFor(500);
-                    expect(await page.locator('canvas').evaluate((canvas) => canvas.toDataURL())).toBe(immediate);
-
-                    await page.evaluate(() => window.chart.render());
-                    expect(await page.locator('canvas').evaluate((canvas) => canvas.toDataURL())).toBe(immediate);
-                }
-            });
         }
 
         test('scatter transitions interpolate numeric coordinates', async ({ page }) => {
@@ -153,7 +177,7 @@ test.describe('Chart animation', () => {
             expect(await frame()).not.toBe(intermediate);
         });
 
-        test('animation finishes and disposal cancels pending frames', async ({ page }) => {
+        test('stops requesting frames after the duration elapses', async ({ page }) => {
             await page.emulateMedia({ reducedMotion: 'no-preference' });
             await page.evaluate(() => {
                 window.drawCount = 0;
@@ -175,16 +199,6 @@ test.describe('Chart animation', () => {
 
             await page.clock.runFor(80);
             expect(await page.evaluate(() => window.drawCount)).toBe(before);
-
-            await page.evaluate(() => {
-                window.chart.run();
-                window.chart.setData({ labels: ['New'], datasets: [{ data: [50] }] });
-                window.chart.dispose();
-            });
-            const after = await page.evaluate(() => window.drawCount);
-
-            await page.clock.runFor(150);
-            expect(await page.evaluate(() => window.drawCount)).toBe(after);
         });
     });
 
@@ -265,49 +279,69 @@ test.describe('Chart animation', () => {
         });
     });
 
-    test.describe('easing and duration', () => {
-        test('ease-out moves points sooner than linear timing and defaults finish in 300ms', async ({ page }) => {
-            await page.emulateMedia({ reducedMotion: 'no-preference' });
+    test.describe('cancellation', () => {
+        for (const type of ['bar', 'line', 'pie', 'area', 'donut', 'radar', 'polarArea']) {
+            for (const method of ['render', 'resize', 'dispose']) {
+                test(`${type} cancels pending frames on ${method}`, async ({ page }) => {
+                    await page.emulateMedia({ reducedMotion: 'no-preference' });
+                    await page.evaluate((type) => {
+                        window.drawCount = 0;
 
-            const positions = {};
+                        const draw = Chart.prototype.draw;
 
-            for (const easing of ['linear', 'easeOutQuad', 'easeInOutQuad']) {
-                await page.evaluate((curve) => {
-                    window.makeChart({
-                        type: 'line',
-                        animation: { duration: 1000, easing: curve },
-                        data: {
-                            labels: ['A'],
-                            datasets: [{ data: [10], backgroundColor: '#ff0000', borderWidth: 0, pointRadius: 12 }],
-                        },
-                    });
-                }, easing);
-                await page.clock.runFor(250);
+                        Chart.prototype.draw = function() {
+                            window.drawCount++;
 
-                positions[easing] = await page.locator('canvas').evaluate((node) => {
-                    const pixels = node.getContext('2d').getImageData(300, 0, 1, node.height).data;
-                    const rows = [];
+                            return draw.call(this);
+                        };
 
-                    for (let y = 0; y < node.height; y++) {
-                        if (pixels[y * 4 + 3]) {
-                            rows.push(y);
+                        window.makeChart({ type, animation: { duration: 1000, easing: 'linear' } });
+                    }, type);
+
+                    await page.clock.runFor(250);
+                    await page.evaluate((method) => {
+                        if (method === 'resize') {
+                            document.getElementById('chart').style.width = '500px';
                         }
-                    }
 
-                    return (rows[0] + rows.at(-1)) / 2;
+                        window.chart[method]();
+                    }, method);
+
+                    const stopped = await page.evaluate(() => window.drawCount);
+
+                    await page.clock.runFor(1000);
+                    expect(await page.evaluate(() => window.drawCount)).toBe(stopped);
                 });
             }
+        }
 
-            expect(positions.easeOutQuad).toBeLessThan(positions.linear - 40);
-            expect(positions.easeInOutQuad).toBeGreaterThan(positions.linear + 20);
+        test('cancels restarted frames after a data update and disposal', async ({ page }) => {
+            await page.emulateMedia({ reducedMotion: 'no-preference' });
+            await page.evaluate(() => {
+                window.drawCount = 0;
 
-            await page.evaluate(() => window.makeChart({ type: 'line', animation: Chart.defaults.animation }));
-            await page.clock.runFor(350);
+                const draw = Chart.prototype.draw;
 
-            const completed = await page.locator('canvas').evaluate((node) => node.toDataURL());
+                Chart.prototype.draw = function() {
+                    window.drawCount++;
 
-            await page.evaluate(() => window.chart.render());
-            expect(await page.locator('canvas').evaluate((node) => node.toDataURL())).toBe(completed);
+                    return draw.call(this);
+                };
+
+                window.makeChart({ animation: { duration: 100 } });
+            });
+
+            await page.clock.runFor(200);
+
+            await page.evaluate(() => {
+                window.chart.run();
+                window.chart.setData({ labels: ['New'], datasets: [{ data: [50] }] });
+                window.chart.dispose();
+            });
+            const after = await page.evaluate(() => window.drawCount);
+
+            await page.clock.runFor(150);
+            expect(await page.evaluate(() => window.drawCount)).toBe(after);
         });
     });
 });

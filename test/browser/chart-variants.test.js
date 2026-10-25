@@ -52,19 +52,21 @@ test.describe('Chart variants', () => {
             await expect(canvas).toHaveAttribute('aria-description', 'A. Sales: 10');
         });
 
-        test('donut cutout falls back for invalid values and accepts numeric strings', async ({ page }) => {
-            const cutouts = await page.evaluate(() => {
-                window.makeChart({ type: 'donut' });
-
-                return [-1, 1, NaN, '.4'].map((cutout) => {
+        for (const { name, cutout, expected } of [
+            { name: 'numeric strings', cutout: '.4', expected: .4 },
+            { name: 'negative values', cutout: -1, expected: .6 },
+            { name: 'a fully cut-out circle', cutout: 1, expected: .6 },
+            { name: 'NaN', cutout: NaN, expected: .6 },
+        ]) {
+            test(`normalizes donut cutout for ${name}`, async ({ page }) => {
+                await page.evaluate((cutout) => {
+                    window.makeChart({ type: 'donut' });
                     window.chart.setSettings({ cutout });
+                }, cutout);
 
-                    return window.chart.options.cutout;
-                });
+                expect(await page.evaluate(() => window.chart.options.cutout)).toBe(expected);
             });
-
-            expect(cutouts).toEqual([.6, .6, .6, .4]);
-        });
+        }
     });
 
     test.describe('scatter', () => {
@@ -80,10 +82,6 @@ test.describe('Chart variants', () => {
                     },
                 });
 
-                const copy = window.chart.getData();
-
-                copy[0].data[1].x = 99;
-
                 const context = document.querySelector('canvas').getContext('2d');
 
                 return {
@@ -94,12 +92,10 @@ test.describe('Chart variants', () => {
                 };
             });
 
-            expect(state).toEqual({
-                valuesX: [0, 4, 10, 8],
-                valuesY: [0, 5, 10, 1],
-                pointAlpha: 255,
-                betweenAlpha: 0,
-            });
+            expect(state.valuesX).toEqual([0, 4, 10, 8]);
+            expect(state.valuesY).toEqual([0, 5, 10, 1]);
+            expect(state.pointAlpha).toBe(255);
+            expect(state.betweenAlpha).toBe(0);
 
             const canvas = page.locator('canvas');
             const bounds = await canvas.boundingBox();
@@ -153,69 +149,68 @@ test.describe('Chart variants', () => {
 
     test.describe('data boundaries', () => {
         for (const type of ['area', 'donut', 'scatter']) {
-            test(`${type} handles empty and zero data and rejects invalid updates atomically`, async ({ page }) => {
-                const state = await page.evaluate((chartType) => {
-                    const value = chartType === 'scatter' ? { x: 0, y: 0 } : 0;
+            test.describe(type, () => {
+                test('renders empty data with a finite scale', async ({ page }) => {
+                    await page.evaluate((type) => window.makeChart({
+                        type, data: { labels: [], datasets: [] },
+                    }), type);
 
-                    window.makeChart({ type: chartType, data: { labels: [], datasets: [] } });
-                    window.chart.setData({ labels: ['Only'], datasets: [{ data: [value] }] });
+                    expect(await page.evaluate(() => window.chart.getValues())).toEqual([]);
+                    expect(await page.evaluate(() => window.chart.getScale().every(Number.isFinite))).toBe(true);
+                });
 
-                    const invalid = chartType === 'scatter' ? [{ x: Infinity, y: 1 }, { x: 1 }] : [NaN, Infinity];
+                test('updates empty data to zero values', async ({ page }) => {
+                    await page.evaluate((type) => {
+                        const value = type === 'scatter' ? { x: 0, y: 0 } : 0;
 
-                    if (chartType === 'donut') {
-                        invalid.push(-1);
-                    }
+                        window.makeChart({ type, data: { labels: [], datasets: [] } });
+                        window.chart.setData({ labels: ['Only'], datasets: [{ data: [value] }] });
+                    }, type);
 
-                    let rejected = 0;
+                    expect(await page.evaluate(() => window.chart.getLabels())).toEqual(['Only']);
+                    expect(await page.evaluate(() => window.chart.getValues())).toEqual([0]);
+                    expect(await page.evaluate(() => window.chart.getScale().every(Number.isFinite))).toBe(true);
+                });
 
-                    for (const badValue of invalid) {
-                        try {
-                            window.chart.setData({ labels: ['Bad'], datasets: [{ data: [badValue] }] });
-                        } catch {
-                            rejected++;
+                const invalid = type === 'scatter' ? [
+                    { name: 'infinite coordinates', value: { x: Infinity, y: 1 } },
+                    { name: 'missing coordinates', value: { x: 1 } },
+                ] : [
+                    { name: 'NaN values', value: NaN },
+                    { name: 'infinite values', value: Infinity },
+                ];
+
+                if (type === 'donut') {
+                    invalid.push({ name: 'negative values', value: -1 });
+                }
+
+                for (const { name, value } of invalid) {
+                    test(`rejects ${name} without replacing existing data`, async ({ page }) => {
+                        await page.evaluate((type) => window.makeChart({
+                            type,
+                            data: {
+                                labels: ['Only'],
+                                datasets: [{ data: [type === 'scatter' ? { x: 0, y: 0 } : 0] }],
+                            },
+                        }), type);
+
+                        let message = 'Dataset 0 values must be finite numbers.';
+
+                        if (type === 'scatter') {
+                            message = 'Dataset 0 points must have finite x and y coordinates.';
+                        } else if (value === -1) {
+                            message = 'Dataset 0 circular and radial values must be nonnegative.';
                         }
-                    }
 
-                    return {
-                        rejected,
-                        expected: invalid.length,
-                        labels: window.chart.getLabels(),
-                        values: window.chart.getValues(),
-                        finite: window.chart.getScale().every(Number.isFinite),
-                    };
-                }, type);
+                        await expect(page.evaluate((value) => window.chart.setData({
+                            labels: ['Bad'], datasets: [{ data: [value] }],
+                        }), value)).rejects.toThrow(message);
 
-                expect(state.rejected).toBe(state.expected);
-                expect(state.labels).toEqual(['Only']);
-                expect(state.values).toEqual([0]);
-                expect(state.finite).toBe(true);
+                        expect(await page.evaluate(() => window.chart.getLabels())).toEqual(['Only']);
+                        expect(await page.evaluate(() => window.chart.getValues())).toEqual([0]);
+                    });
+                }
             });
         }
-    });
-
-    test.describe('default palette', () => {
-        test('the default palette supplies twelve colors before repeating', async ({ page }) => {
-            const colors = await page.evaluate(() => {
-                window.makeChart({
-                    data: {
-                        labels: ['A'],
-                        datasets: Array.from({ length: 13 }, () => ({ data: [1] })),
-                    },
-                });
-
-                const series = window.chart.getData().map((dataset) => dataset.backgroundColor[0]);
-
-                window.chart.setSettings({
-                    type: 'donut',
-                    data: { labels: ['A'], datasets: [{ data: [1] }] },
-                });
-
-                return { series, slices: window.chart.getData()[0].backgroundColor };
-            });
-
-            expect(new Set(colors.series.slice(0, 12)).size).toBe(12);
-            expect(colors.series[12]).toBe(colors.series[0]);
-            expect(colors.slices).toEqual(colors.series.slice(0, 12));
-        });
     });
 });

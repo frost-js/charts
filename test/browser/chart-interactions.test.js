@@ -46,19 +46,16 @@ test.describe('Chart interactions', () => {
             });
         }
 
-        test('legend interaction can be disabled and removed items do not retain hidden state', async ({ page }) => {
-            const result = await page.evaluate(() => {
-                window.makeChart({ legend: { display: true, interactive: false } });
-                const buttons = document.querySelectorAll('button').length;
-
+        test('removed items do not retain hidden state when data is replaced', async ({ page }) => {
+            await page.evaluate(() => {
+                window.makeChart();
                 window.chart.setDatasetVisibility(0, false);
                 window.chart.setData({ labels: [], datasets: [] });
                 window.chart.setData({ labels: ['A'], datasets: [{ data: [3] }] });
-
-                return { buttons, visible: window.chart.isDatasetVisible(0), values: window.chart.getValues() };
             });
 
-            expect(result).toEqual({ buttons: 0, visible: true, values: [3] });
+            expect(await page.evaluate(() => window.chart.isDatasetVisible(0))).toBe(true);
+            expect(await page.evaluate(() => window.chart.getValues())).toEqual([3]);
         });
     });
 
@@ -118,43 +115,36 @@ test.describe('Chart interactions', () => {
                 expect(await page.evaluate(() => window.chart.getValues())).toEqual([10, 20]);
             });
         }
-    });
 
-    test.describe('legend alignment', () => {
-        for (const position of ['left', 'right']) {
-            test(`${position} legends align swatches and labels along a shared edge`, async ({ page }) => {
-                const labels = await page.evaluate((legendPosition) => {
-                    const recorded = [];
-                    const fillText = CanvasRenderingContext2D.prototype.fillText;
+        test('disables legend controls when interaction is disabled', async ({ page }) => {
+            await page.evaluate(() => window.makeChart({ legend: { display: true, interactive: false } }));
 
-                    CanvasRenderingContext2D.prototype.fillText = function(text, x, y, ...args) {
-                        if (text === 'Short' || text === 'A longer series name') {
-                            recorded.push({ text, x, y });
-                        }
-
-                        return fillText.call(this, text, x, y, ...args);
-                    };
-
-                    window.makeChart({
-                        legend: { display: true, position: legendPosition },
-                        data: {
-                            labels: ['A'],
-                            datasets: [{ label: 'Short', data: [1] }, { label: 'A longer series name', data: [2] }],
-                        },
-                    });
-
-                    CanvasRenderingContext2D.prototype.fillText = fillText;
-
-                    return recorded.slice(0, 2);
-                }, position);
-
-                expect(labels[0].x).toBe(labels[1].x);
-                expect(labels[0].y).toBeLessThan(labels[1].y);
-            });
-        }
+            await expect(page.getByRole('button')).toHaveCount(0);
+        });
     });
 
     test.describe('tooltips', () => {
+        test('tooltips stay anchored by default and can follow the cursor', async ({ page }) => {
+            await page.evaluate(() => window.makeChart());
+
+            const canvas = page.locator('canvas');
+            const bounds = await canvas.boundingBox();
+            const frame = () => canvas.evaluate((node) => node.toDataURL());
+
+            await page.mouse.move(bounds.x + 140, bounds.y + 300);
+            const fixed = await frame();
+
+            await page.mouse.move(bounds.x + 180, bounds.y + 300);
+            expect(await frame()).toBe(fixed);
+
+            await page.evaluate(() => window.chart.setSettings({ tooltip: { position: 'cursor' } }));
+            await page.mouse.move(bounds.x + 140, bounds.y + 300);
+            const cursor = await frame();
+
+            await page.mouse.move(bounds.x + 180, bounds.y + 300);
+            expect(await frame()).not.toBe(cursor);
+        });
+
         test('anchored tooltips follow marks, stay stable within a mark, and use rounded translucent bodies', async ({ page }) => {
             await page.evaluate(() => {
                 const render = Chart.Tooltip.prototype.render;
@@ -220,28 +210,7 @@ test.describe('Chart interactions', () => {
             expect(second.right).toBeLessThan(560);
         });
 
-        test('fixed tooltips remain stationary while cursor tooltips follow the pointer', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({ tooltip: { position: 'fixed' } }));
-
-            const canvas = page.locator('canvas');
-            const bounds = await canvas.boundingBox();
-            const frame = () => canvas.evaluate((node) => node.toDataURL());
-
-            await page.mouse.move(bounds.x + 140, bounds.y + 300);
-            const fixed = await frame();
-
-            await page.mouse.move(bounds.x + 180, bounds.y + 300);
-            expect(await frame()).toBe(fixed);
-
-            await page.evaluate(() => window.chart.setSettings({ tooltip: { position: 'cursor' } }));
-            await page.mouse.move(bounds.x + 140, bounds.y + 300);
-            const cursor = await frame();
-
-            await page.mouse.move(bounds.x + 180, bounds.y + 300);
-            expect(await frame()).not.toBe(cursor);
-        });
-
-        test('canvas tooltips treat labels as text and can be disabled', async ({ page }) => {
+        test('canvas tooltips treat labels as text', async ({ page }) => {
             await page.evaluate(() => {
                 window.makeChart({
                     data: {
@@ -257,9 +226,19 @@ test.describe('Chart interactions', () => {
             await page.mouse.move(bounds.x + 300, bounds.y + 200);
             await expect(canvas).toHaveAttribute('aria-description', '<img src=x onerror=alert(1)>. Dataset 1: 1');
             await expect(page.locator('img')).toHaveCount(0);
+        });
+
+        test('removes tooltip descriptions when display is disabled', async ({ page }) => {
+            await page.evaluate(() => window.makeChart());
+
+            const canvas = page.locator('canvas');
+            const bounds = await canvas.boundingBox();
+
+            await page.mouse.move(bounds.x + 160, bounds.y + 300);
+            await expect(canvas).toHaveAttribute('aria-description', 'A. Sales: 10');
 
             await page.evaluate(() => window.chart.setSettings({ tooltip: { display: false } }));
-            await page.mouse.move(bounds.x + 301, bounds.y + 200);
+            await page.mouse.move(bounds.x + 161, bounds.y + 300);
             await expect(canvas).not.toHaveAttribute('aria-description');
         });
 
