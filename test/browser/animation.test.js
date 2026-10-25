@@ -1,6 +1,6 @@
 import { expect, test } from '#test';
 
-for (const type of ['line', 'pie', 'area', 'donut']) {
+for (const type of ['bar', 'line', 'pie', 'area', 'donut', 'radar', 'polarArea']) {
     test(`${type} animates initial geometry, updates, and interrupted transitions`, async ({ page }) => {
         await page.emulateMedia({ reducedMotion: 'no-preference' });
         await page.clock.install();

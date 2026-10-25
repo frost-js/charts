@@ -49,6 +49,11 @@ export default class LineChart extends Layer {
         for (const [datasetIndex, dataset] of datasets.entries()) {
             const points = [];
 
+            if (!this.chart.isDatasetVisible(datasetIndex)) {
+                this.#points.push(points);
+                continue;
+            }
+
             for (const [index, value] of dataset.data.entries()) {
                 let x = labels.length === 1 ? this.rect.width / 2 : index * step;
 
@@ -196,7 +201,7 @@ export default class LineChart extends Layer {
 
             if (item.interactive) {
                 hit.arc(x, y, Math.max(6, item.pointRadius), 0, Math.PI * 2);
-                this.addHitRegion(hit, item);
+                this.addHitRegion(hit, { ...item, anchorX: x, anchorY: y });
             }
 
             previous = { x, y };

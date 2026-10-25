@@ -15,6 +15,20 @@ export default class Legend extends Layer {
     #spacing;
 
     /**
+     * Gets the visible legend entries in reading order.
+     * @returns {object[]} The dataset or slice keys.
+     */
+    get items() {
+        if (!this.settings.display) {
+            return [];
+        }
+
+        const groups = ['top', 'bottom'].includes(this.settings.position) ? this.#rows : this.#cols;
+
+        return (groups || []).flatMap((group) => group.labels.map((label) => label.dataset));
+    }
+
+    /**
      * Calculates the layer bounds before continuing layout.
      * @param {Rect} chartRect The remaining chart rectangle.
      * @param {Function} next The next layout callback.
@@ -42,15 +56,21 @@ export default class Legend extends Layer {
         const maxWidth = Math.min(this.settings.maxWidth ?? availableWidth, availableWidth);
         const maxHeight = Math.min(this.settings.maxHeight ?? availableHeight, availableHeight);
 
-        let datasets = this.chart.getData();
+        let datasets = this.chart.getData().map((dataset, datasetIndex) => ({
+            ...dataset,
+            datasetIndex,
+            visible: this.chart.isDatasetVisible(datasetIndex),
+        }));
 
-        if (['pie', 'donut'].includes(this.chart.options.type)) {
+        if (['pie', 'donut', 'polarArea'].includes(this.chart.options.type)) {
             const labels = this.chart.getLabels();
 
             datasets = datasets.flatMap((dataset) => {
                 return labels.map((label, index) => ({
                     ...dataset,
                     label,
+                    index,
+                    visible: this.chart.isDataVisible(dataset.datasetIndex, index),
                     backgroundColor: [dataset.backgroundColor[index % dataset.backgroundColor.length]],
                     borderColor: [dataset.borderColor[index % dataset.borderColor.length]],
                 }));
@@ -80,11 +100,11 @@ export default class Legend extends Layer {
      * Renders the layer to its offscreen canvas.
      */
     render() {
+        super.render();
+
         if (!this.settings.display) {
             return;
         }
-
-        super.render();
 
         updateFont(this.context, this.settings.labels.font);
 
@@ -333,15 +353,14 @@ export default class Legend extends Layer {
      * Renders the horizontal legend rows.
      */
     #renderHorizontal() {
-        let x;
         let y = 0;
 
         for (const row of this.#rows) {
-            x = 0;
+            let x = 0;
 
             switch (this.settings.labels.textAlign) {
                 case 'center':
-                    x += (this.rect.width - row.width) / 2;
+                    x = (this.rect.width - row.width) / 2;
                     break;
                 case 'right':
                 case 'end':
@@ -350,48 +369,11 @@ export default class Legend extends Layer {
             }
 
             for (const label of row.labels) {
-                let labelY = y;
+                const textWidth = Math.max(0, ...label.metrics.map((metric) => metric.width));
+                const width = this.settings.labels.boxWidth + this.#spacing + textWidth;
 
-                const labelHeight = label.lines.length * (this.#lineHeight);
-
-                if (labelHeight < this.settings.labels.boxHeight) {
-                    labelY += (this.settings.labels.boxHeight - labelHeight) / 2;
-                }
-
-                const boxX = x;
-                const boxY = labelY + ((labelHeight - this.settings.labels.boxHeight) / 2);
-
-                const boxPath = new Path2D();
-                boxPath.rect(boxX, boxY, this.settings.labels.boxWidth, this.settings.labels.boxHeight);
-
-                this.context.fillStyle = label.dataset.backgroundColor[0];
-                this.context.strokeStyle = label.dataset.borderColor[0];
-                this.context.fill(boxPath);
-
-                if (label.dataset.borderWidth) {
-                    this.context.lineWidth = label.dataset.borderWidth;
-                    this.context.stroke(boxPath);
-                }
-
-                x += this.settings.labels.boxWidth + this.#spacing;
-
-                const labelX = x;
-
-                this.context.fillStyle = this.settings.labels.color;
-
-                for (const [i, line] of label.lines.entries()) {
-                    const metric = label.metrics[i];
-
-                    this.context.fillText(
-                        line,
-                        labelX,
-                        labelY + metric.fontBoundingBoxAscent,
-                    );
-
-                    labelY += this.#lineHeight;
-                }
-
-                x += Math.max(0, ...label.metrics.map((metric) => metric.width)) + this.settings.labels.padding;
+                this.#renderLabel(label, x, y, width, row.height);
+                x += width + this.settings.labels.padding;
             }
 
             y += row.height + this.settings.labels.padding;
@@ -399,61 +381,91 @@ export default class Legend extends Layer {
     }
 
     /**
-     * Renders the vertical legend columns.
+     * Draws a legend swatch, label, hidden state, and interactive hit area.
+     * @param {object} label The wrapped legend entry.
+     * @param {number} x The left edge.
+     * @param {number} y The top edge.
+     * @param {number} width The item width.
+     * @param {number} height The item height.
+     */
+    #renderLabel(label, x, y, width, height) {
+        const { dataset, lines, metrics } = label;
+        const { boxWidth, boxHeight, color } = this.settings.labels;
+        const textX = x + boxWidth + this.#spacing;
+        const textY = y + (height - lines.length * this.#lineHeight) / 2;
+        const box = new Path2D();
+
+        box.rect(x, y + (height - boxHeight) / 2, boxWidth, boxHeight);
+
+        this.context.save();
+        this.context.globalAlpha = dataset.visible ? 1 : .4;
+        this.context.fillStyle = dataset.backgroundColor[0];
+        this.context.fill(box);
+
+        if (dataset.borderWidth) {
+            this.context.lineWidth = dataset.borderWidth;
+            this.context.strokeStyle = dataset.borderColor[0];
+            this.context.stroke(box);
+        }
+
+        this.context.fillStyle = color;
+
+        for (const [index, line] of lines.entries()) {
+            const baseline = textY + index * this.#lineHeight + metrics[index].fontBoundingBoxAscent;
+
+            this.context.fillText(line, textX, baseline);
+
+            if (!dataset.visible) {
+                const middle = baseline - this.settings.labels.font.size / 3;
+
+                this.context.beginPath();
+                this.context.moveTo(textX, middle);
+                this.context.lineTo(textX + metrics[index].width, middle);
+                this.context.strokeStyle = color;
+                this.context.lineWidth = 1;
+                this.context.stroke();
+            }
+        }
+
+        this.context.restore();
+
+        const hit = new Path2D();
+
+        hit.rect(x, y, width, height);
+        this.addHitRegion(hit, dataset);
+
+        if (this.active?.datasetIndex === dataset.datasetIndex && this.active.index === dataset.index) {
+            this.context.strokeStyle = color;
+            this.context.lineWidth = 1;
+            this.context.stroke(hit);
+        }
+    }
+
+    /**
+     * Renders the vertical legend columns with a shared label edge.
      */
     #renderVertical() {
         let x = 0;
-        let y;
 
         for (const col of this.#cols) {
-            y = 0;
+            let y = 0;
 
             for (const label of col.labels) {
-                const labelHeight = label.lines.length * (this.#lineHeight);
-
-                let boxX = x;
-                const boxY = y + ((labelHeight - this.settings.labels.boxHeight) / 2);
+                const height = Math.max(label.lines.length * this.#lineHeight, this.settings.labels.boxHeight);
+                let labelX = x;
 
                 switch (this.settings.labels.textAlign) {
                     case 'center':
-                        boxX += (col.width - label.width) / 2;
+                        labelX += (col.width - label.width) / 2;
                         break;
                     case 'right':
                     case 'end':
-                        boxX += col.width - label.width;
+                        labelX += col.width - label.width;
                         break;
                 }
 
-                const boxPath = new Path2D();
-                boxPath.rect(boxX, boxY, this.settings.labels.boxWidth, this.settings.labels.boxHeight);
-
-                this.context.fillStyle = label.dataset.backgroundColor[0];
-                this.context.strokeStyle = label.dataset.borderColor[0];
-                this.context.fill(boxPath);
-
-                if (label.dataset.borderWidth) {
-                    this.context.lineWidth = label.dataset.borderWidth;
-                    this.context.stroke(boxPath);
-                }
-
-                this.context.fillStyle = this.settings.labels.color;
-
-                const labelX = boxX + this.settings.labels.boxWidth + this.#spacing;
-                let labelY = y;
-
-                for (const [i, line] of label.lines.entries()) {
-                    const { fontBoundingBoxAscent: ascent } = label.metrics[i];
-
-                    this.context.fillText(
-                        line,
-                        labelX,
-                        labelY + ascent,
-                    );
-
-                    labelY += this.#lineHeight;
-                }
-
-                y += Math.max(labelHeight, this.settings.labels.boxHeight) + this.settings.labels.padding;
+                this.#renderLabel(label, labelX, y, label.width, height);
+                y += height + this.settings.labels.padding;
             }
 
             x += col.width + this.settings.labels.padding;

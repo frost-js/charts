@@ -13,6 +13,7 @@ export default class LabelsX extends Layer {
     #gridWidth;
     #labels;
     #metrics;
+    #numeric;
     #offset;
     #values;
 
@@ -35,7 +36,10 @@ export default class LabelsX extends Layer {
 
         updateFont(this.context, this.settings.font);
 
-        this.#values = this.chart.options.type === 'scatter' ? this.chart.getScale('x') : this.chart.getLabels();
+        const { type, orientation } = this.chart.options;
+
+        this.#numeric = type === 'scatter' || (type === 'bar' && orientation === 'horizontal');
+        this.#values = this.#numeric ? this.chart.getScale('x') : this.chart.getLabels();
         this.#labels = this.#values.map((value, index) => {
             const formatted = this.settings.callback ? this.settings.callback(value, index) : value;
 
@@ -55,17 +59,12 @@ export default class LabelsX extends Layer {
 
         next(chartRect);
 
-        switch (this.chart.options.type) {
-            case 'bar':
-                this.#gridWidth = chartRect.width / Math.max(1, this.#labels.length);
-                this.#offset = this.#gridWidth / 2;
-                break;
-            case 'line':
-            case 'area':
-            case 'scatter':
-                this.#gridWidth = this.#labels.length > 1 ? chartRect.width / (this.#labels.length - 1) : 0;
-                this.#offset = this.#labels.length === 1 ? chartRect.width / 2 : 0;
-                break;
+        if (type === 'bar' && !this.#numeric) {
+            this.#gridWidth = chartRect.width / Math.max(1, this.#labels.length);
+            this.#offset = this.#gridWidth / 2;
+        } else {
+            this.#gridWidth = this.#labels.length > 1 ? chartRect.width / (this.#labels.length - 1) : 0;
+            this.#offset = this.#labels.length === 1 ? chartRect.width / 2 : 0;
         }
 
         this.rect.x = chartRect.left;
@@ -102,7 +101,7 @@ export default class LabelsX extends Layer {
 
             let position = i * this.#gridWidth + this.#offset;
 
-            if (this.chart.options.type === 'scatter') {
+            if (this.#numeric) {
                 const fraction = getScalePosition(this.#values[i], this.#values[0], this.#values.at(-1));
 
                 position = fraction * this.rect.width;

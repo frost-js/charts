@@ -19,11 +19,15 @@
         <nav class="nav nav-pills flex-wrap flex-lg-column gap-1" aria-label="Chart examples">
             <a class="nav-link" href="index.html">Overview</a>
             <a class="nav-link" href="bar.html">Grouped bars</a>
+            <a class="nav-link" href="bar-horizontal.html">Horizontal bars</a>
+            <a class="nav-link" href="bar-stacked.html">Stacked bars</a>
             <a class="nav-link" href="line.html">Line series</a>
             <a class="nav-link" href="area.html">Area series</a>
             <a class="nav-link active" href="pie.htm" aria-current="page">Pie slices</a>
             <a class="nav-link" href="donut.html">Donut slices</a>
             <a class="nav-link" href="scatter.html">Scatter plots</a>
+            <a class="nav-link" href="polar-area.html">Polar area</a>
+            <a class="nav-link" href="radar.html">Radar profiles</a>
             <a class="nav-link" href="legend.html">Legend placement</a>
             <a class="nav-link" href="tooltip.html">Tooltip positions</a>
         </nav>
@@ -73,7 +77,6 @@
                 {
                     label: 'Visits',
                     data: [20, 5, 50, 90, 13],
-                    backgroundColor: ['#6366f1', '#14b8a6', '#f59e0b', '#ec4899', '#38bdf8'],
                     borderWidth: 0,
                 },
             ],
@@ -83,10 +86,6 @@
             data,
             title: { display: false },
             legend: { position: 'bottom' },
-            scales: {
-                x: { grid: { display: false } },
-                y: { grid: { lineColor: '#e2e8f0', drawBorder: false } },
-            },
         });
 
         document.getElementById('update-data').addEventListener('click', () => {

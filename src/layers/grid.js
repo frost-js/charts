@@ -9,8 +9,10 @@ import Layer from './layer.js';
  * Draws grid lines, axis borders, and ticks behind the data layer.
  */
 export default class Grid extends Layer {
+    #horizontal;
     #labelsX;
     #labelsY;
+    #numericX;
     #plotRect;
 
     /**
@@ -20,8 +22,12 @@ export default class Grid extends Layer {
      */
     calculate(chartRect, next) {
         this.rect = chartRect.clone();
-        this.#labelsX = this.chart.options.type === 'scatter' ? this.chart.getScale('x') : this.chart.getLabels();
-        this.#labelsY = this.chart.getScale();
+        const { type, orientation } = this.chart.options;
+
+        this.#horizontal = type === 'bar' && orientation === 'horizontal';
+        this.#numericX = type === 'scatter' || this.#horizontal;
+        this.#labelsX = this.#numericX ? this.chart.getScale('x') : this.chart.getLabels();
+        this.#labelsY = this.#horizontal ? this.chart.getLabels() : this.chart.getScale();
 
         const tickX = Math.min(chartRect.height, this.#tickLength('x'));
         const tickY = Math.min(chartRect.width, this.#tickLength('y'));
@@ -197,7 +203,7 @@ export default class Grid extends Layer {
         const count = this.#labelsX.length;
         const rect = this.#plotRect;
 
-        if (this.chart.options.type === 'scatter') {
+        if (this.#numericX) {
             const position = getScalePosition(this.#labelsX[index], this.#labelsX[0], this.#labelsX.at(-1));
 
             return rect.left + position * rect.width;
@@ -216,6 +222,10 @@ export default class Grid extends Layer {
      * @returns {number} The chart-local coordinate.
      */
     #y(index) {
+        if (this.#horizontal) {
+            return this.#plotRect.top + (index + .5) * this.#plotRect.height / Math.max(1, this.#labelsY.length);
+        }
+
         const value = this.#labelsY[index];
         const minimum = this.#labelsY[0];
         const maximum = this.#labelsY.at(-1);

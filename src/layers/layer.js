@@ -156,7 +156,17 @@ export default class Layer {
         const localY = (y - this.#canvasRect.y) * ratio;
         const hit = this.#hitRegions.findLast(({ path }) => this.#context.isPointInPath(path, localX, localY));
 
-        return hit ? { ...hit.data, x, y } : null;
+        if (!hit) {
+            return null;
+        }
+
+        return {
+            ...hit.data,
+            x,
+            y,
+            anchorX: hit.data.anchorX == null ? x : this.#canvasRect.x + hit.data.anchorX,
+            anchorY: hit.data.anchorY == null ? y : this.#canvasRect.y + hit.data.anchorY,
+        };
     }
 
     /**
@@ -165,7 +175,11 @@ export default class Layer {
     render() {
         this.#hitRegions = [];
 
-        this.#context.clearRect(0, 0, this.#canvasRect.width, this.#canvasRect.height);
+        // Clear rounded backing pixels too; fractional layout bounds can leave
+        // translucent marks accumulating along the last row or column.
+        const ratio = this.#chart.pixelRatio;
+
+        this.#context.clearRect(0, 0, this.#canvas.width / ratio, this.#canvas.height / ratio);
     }
 
     /**

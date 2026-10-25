@@ -2,7 +2,7 @@
     "name": "@fr0st/charts",
     "version": "1.0.0",
     "private": false,
-    "description": "Standalone responsive canvas bar, line, area, pie, donut, and scatter charts.",
+    "description": "Standalone responsive canvas bar, line, area, pie, donut, scatter, polar area, and radar charts.",
     "keywords": [
         "charts",
         "canvas",
@@ -12,6 +12,8 @@
         "donut",
         "scatter",
         "pie",
+        "polar",
+        "radar",
         "frost"
     ],
     "homepage": "https://github.com/frost-js/charts",

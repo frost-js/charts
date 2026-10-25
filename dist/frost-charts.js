@@ -12,7 +12,7 @@
 	* @property {string|string[]} [borderColor] The border color or repeating colors.
 	* @property {number} [borderWidth=1] The border width in CSS pixels.
 	* @property {number} [pointRadius=2] The point radius in CSS pixels; scatter defaults to 4.
-	* @property {number} [fillOpacity=.2] The area fill opacity.
+	* @property {number} [fillOpacity=.2] The area or radar fill opacity; polar area defaults to .75.
 	*/
 	/**
 	* @typedef {object} ChartData
@@ -20,17 +20,17 @@
 	* @property {ChartDataset[]} datasets The chart datasets.
 	*/
 	var defaultColors = [
-		"#2563eb",
-		"#dc2626",
-		"#059669",
-		"#9333ea",
-		"#d97706",
-		"#0891b2",
-		"#db2777",
-		"#65a30d",
-		"#ea580c",
-		"#4f46e5",
-		"#0d9488",
+		"#6366f1",
+		"#14b8a6",
+		"#f59e0b",
+		"#ec4899",
+		"#8b5cf6",
+		"#0ea5e9",
+		"#f97316",
+		"#84cc16",
+		"#06b6d4",
+		"#a855f7",
+		"#e11d48",
 		"#64748b"
 	];
 	/**
@@ -62,7 +62,12 @@
 				};
 			}
 			if (!Number.isFinite(value)) throw new TypeError(`Dataset ${index} values must be finite numbers.`);
-			if (["pie", "donut"].includes(type) && value < 0) throw new RangeError(`Dataset ${index} pie and donut values must be nonnegative.`);
+			if ([
+				"pie",
+				"donut",
+				"polarArea",
+				"radar"
+			].includes(type) && value < 0) throw new RangeError(`Dataset ${index} circular and radial values must be nonnegative.`);
 			return value;
 		});
 	}
@@ -80,11 +85,15 @@
 		const values = normalizeValues(dataset.data, type, index);
 		const borderWidth = dataset.borderWidth ?? 1;
 		const pointRadius = dataset.pointRadius ?? (type === "scatter" ? 4 : 2);
-		const fillOpacity = dataset.fillOpacity ?? .2;
+		const fillOpacity = dataset.fillOpacity ?? (type === "polarArea" ? .75 : .2);
 		if (!Number.isFinite(borderWidth) || borderWidth < 0) throw new RangeError(`Dataset ${index} borderWidth must be a finite, nonnegative number.`);
 		if (!Number.isFinite(pointRadius) || pointRadius < 0) throw new RangeError(`Dataset ${index} pointRadius must be a finite, nonnegative number.`);
 		if (!Number.isFinite(fillOpacity) || fillOpacity < 0 || fillOpacity > 1) throw new RangeError(`Dataset ${index} fillOpacity must be between zero and one.`);
-		const circular = ["pie", "donut"].includes(type);
+		const circular = [
+			"pie",
+			"donut",
+			"polarArea"
+		].includes(type);
 		const defaultColor = defaultColors[index % defaultColors.length];
 		const backgroundColor = dataset.backgroundColor ?? (circular ? defaultColors : defaultColor);
 		const borderColor = dataset.borderColor ?? (circular ? "#ffffff" : defaultColor);
@@ -102,18 +111,30 @@
 	* Validates chart data and copies its labels, values, and colors.
 	* @param {ChartData} data The supplied chart data.
 	* @param {string} type The chart type.
+	* @param {boolean} [stacked=false] Whether bar values will be summed.
 	* @returns {ChartData} The independent, normalized chart data.
 	*/
-	function normalizeData(data, type) {
+	function normalizeData(data, type, stacked = false) {
 		if (!data || !Array.isArray(data.datasets)) throw new TypeError("Chart data requires a datasets array.");
 		const inputLabels = type === "scatter" ? data.labels ?? [] : data.labels;
 		if (!Array.isArray(inputLabels)) throw new TypeError("Chart labels must be an array.");
 		const labels = Array.from(inputLabels, (label) => String(label));
+		const datasets = Array.from(data.datasets, (dataset, index) => {
+			return normalizeDataset(dataset, index, labels.length, type);
+		});
+		if (type === "bar" && stacked) for (let index = 0; index < labels.length; index++) {
+			let positive = 0;
+			let negative = 0;
+			for (const dataset of datasets) {
+				const value = dataset.data[index];
+				if (value < 0) negative += value;
+				else positive += value;
+			}
+			if (!Number.isFinite(positive) || !Number.isFinite(negative)) throw new RangeError("Stack totals must be finite numbers.");
+		}
 		return {
 			labels,
-			datasets: Array.from(data.datasets, (dataset, index) => {
-				return normalizeDataset(dataset, index, labels.length, type);
-			})
+			datasets
 		};
 	}
 	/**
@@ -271,18 +292,22 @@
 			const localX = (x - this.#canvasRect.x) * ratio;
 			const localY = (y - this.#canvasRect.y) * ratio;
 			const hit = this.#hitRegions.findLast(({ path }) => this.#context.isPointInPath(path, localX, localY));
-			return hit ? {
+			if (!hit) return null;
+			return {
 				...hit.data,
 				x,
-				y
-			} : null;
+				y,
+				anchorX: hit.data.anchorX == null ? x : this.#canvasRect.x + hit.data.anchorX,
+				anchorY: hit.data.anchorY == null ? y : this.#canvasRect.y + hit.data.anchorY
+			};
 		}
 		/**
 		* Clears the entire offscreen layer before rendering.
 		*/
 		render() {
 			this.#hitRegions = [];
-			this.#context.clearRect(0, 0, this.#canvasRect.width, this.#canvasRect.height);
+			const ratio = this.#chart.pixelRatio;
+			this.#context.clearRect(0, 0, this.#canvas.width / ratio, this.#canvas.height / ratio);
 		}
 		/**
 		* Sets the mark highlighted by the layer.
@@ -374,78 +399,137 @@
 
 // src/charts/bar.js
 /**
-	* Renders grouped bars and interpolates between successive datasets.
+	* Renders grouped or stacked bars in either orientation.
 	*/
 	var BarChart = class extends Layer {
-		#baseY = 0;
-		#oldRects = [];
-		#rects = [];
+		#baseline = 0;
+		#horizontal = false;
+		#oldRects = /* @__PURE__ */ new Map();
+		#rects = /* @__PURE__ */ new Map();
+		#renderedRects = /* @__PURE__ */ new Map();
 		/**
-		* Calculates bar geometry against the current zero baseline.
+		* Calculates bar rectangles and retains visible geometry for transitions.
 		*/
 		data() {
+			const { orientation, stacked } = this.chart.options;
 			const labels = this.chart.getLabels();
 			const datasets = this.chart.getData();
+			const visible = datasets.map((dataset, index) => index).filter((index) => this.chart.isDatasetVisible(index));
+			this.#horizontal = orientation === "horizontal";
+			const categorySize = this.#horizontal ? this.rect.height : this.rect.width;
+			const valueSize = this.#horizontal ? this.rect.width : this.rect.height;
+			const groupSize = categorySize / Math.max(1, labels.length);
+			const count = stacked ? 1 : visible.length;
+			const spacing = Math.min(5, groupSize / (count + 1) / 2);
+			const thickness = Math.max(0, (groupSize - spacing * (count + 1)) / Math.max(1, count));
 			const min = this.chart.getScaleMin();
 			const max = this.chart.getScaleMax();
-			const groupWidth = this.rect.width / Math.max(1, labels.length);
-			const spacing = Math.min(5, groupWidth / (datasets.length + 1) / 2);
-			this.#oldRects = this.#rects;
-			this.#rects = [];
-			this.#baseY = this.rect.height * (1 - getScalePosition(0, min, max));
-			for (let index = 0; index < labels.length; index++) for (const [datasetIndex, dataset] of datasets.entries()) {
-				const value = dataset.data[index];
-				const width = Math.max(0, (groupWidth - spacing * (datasets.length + 1)) / datasets.length);
-				const x = index * groupWidth + (datasetIndex * width + spacing * (datasetIndex + 1));
-				const valueY = this.rect.height * (1 - getScalePosition(value, min, max));
-				this.#rects.push({
-					x,
-					y: Math.min(valueY, this.#baseY),
-					width,
-					height: Math.abs(valueY - this.#baseY),
-					backgroundColor: getColor(dataset, "backgroundColor", index),
-					borderColor: getColor(dataset, "borderColor", index),
-					borderWidth: dataset.borderWidth,
-					label: labels[index],
-					datasetLabel: dataset.label,
-					datasetIndex,
-					index,
-					value
-				});
+			const position = (value) => {
+				const fraction = getScalePosition(value, min, max);
+				return valueSize * (this.#horizontal ? fraction : 1 - fraction);
+			};
+			this.#baseline = position(0);
+			this.#oldRects = this.#renderedRects;
+			this.#rects = /* @__PURE__ */ new Map();
+			for (const [index, label] of labels.entries()) {
+				let positive = 0;
+				let negative = 0;
+				for (const [slot, datasetIndex] of visible.entries()) {
+					if (!this.chart.isDataVisible(datasetIndex, index)) continue;
+					const dataset = datasets[datasetIndex];
+					const value = dataset.data[index];
+					let start = 0;
+					if (stacked) {
+						start = value < 0 ? negative : positive;
+						if (value < 0) negative += value;
+						else positive += value;
+					}
+					const first = position(start);
+					const last = position(start + value);
+					const offset = stacked ? 0 : slot * (thickness + spacing);
+					const category = index * groupSize + spacing + offset;
+					const length = Math.abs(last - first);
+					const near = Math.min(first, last);
+					this.#rects.set(`${datasetIndex}:${index}`, {
+						x: this.#horizontal ? near : category,
+						y: this.#horizontal ? category : near,
+						width: this.#horizontal ? length : thickness,
+						height: this.#horizontal ? thickness : length,
+						end: last,
+						backgroundColor: getColor(dataset, "backgroundColor", index),
+						borderColor: getColor(dataset, "borderColor", index),
+						borderWidth: dataset.borderWidth,
+						label,
+						datasetLabel: dataset.label,
+						datasetIndex,
+						index,
+						value
+					});
+				}
 			}
 		}
 		/**
-		* Renders a single animation frame without retaining old hit regions.
+		* Renders visible rectangles and attaches tooltips to their value ends.
 		* @param {number} [progress=1] The elapsed animation fraction.
 		*/
 		render(progress = 1) {
 			super.render();
-			const count = Math.max(this.#rects.length, this.#oldRects.length);
-			for (let index = 0; index < count; index++) {
-				const target = this.#rects[index];
-				const previous = this.#oldRects[index];
-				const next = target || {
-					...previous,
-					y: this.#baseY,
-					height: 0
-				};
-				const old = previous || {
-					...next,
-					y: this.#baseY,
-					height: 0
-				};
-				const interpolate = (key) => old[key] + (next[key] - old[key]) * progress;
+			const keys = /* @__PURE__ */ new Set([...this.#rects.keys(), ...this.#oldRects.keys()]);
+			this.#renderedRects = /* @__PURE__ */ new Map();
+			for (const key of keys) {
+				const target = this.#rects.get(key);
+				const previous = this.#oldRects.get(key);
+				if (!target && progress === 1) continue;
+				const next = target || this.#collapse(previous);
+				const old = previous || this.#collapse(next);
+				const item = { ...next };
+				for (const property of [
+					"x",
+					"y",
+					"width",
+					"height",
+					"end"
+				]) item[property] = old[property] + (next[property] - old[property]) * progress;
+				this.#renderedRects.set(key, item);
 				const path = new Path2D();
-				path.rect(interpolate("x"), interpolate("y"), interpolate("width"), interpolate("height"));
-				this.context.fillStyle = next.backgroundColor;
+				path.rect(item.x, item.y, item.width, item.height);
+				this.context.fillStyle = item.backgroundColor;
 				this.context.fill(path);
-				if (next.borderWidth) {
-					this.context.strokeStyle = next.borderColor;
-					this.context.lineWidth = next.borderWidth;
+				if (item.borderWidth) {
+					this.context.strokeStyle = item.borderColor;
+					this.context.lineWidth = item.borderWidth;
 					this.context.stroke(path);
 				}
-				if (target) this.addHitRegion(path, target);
+				if (target && item.width && item.height) {
+					let placement = item.value < 0 ? "bottom" : "top";
+					if (this.#horizontal) placement = item.value < 0 ? "left" : "right";
+					this.addHitRegion(path, {
+						...item,
+						placement,
+						anchorX: this.#horizontal ? item.end : item.x + item.width / 2,
+						anchorY: this.#horizontal ? item.y + item.height / 2 : item.end
+					});
+				}
 			}
+		}
+		/**
+		* Collapses a bar to the current zero baseline while retaining its category.
+		* @param {object} item The bar geometry.
+		* @returns {object} The collapsed geometry.
+		*/
+		#collapse(item) {
+			const collapsed = {
+				...item,
+				end: this.#baseline
+			};
+			if (this.#horizontal) {
+				collapsed.x = this.#baseline;
+				collapsed.width = 0;
+			} else {
+				collapsed.y = this.#baseline;
+				collapsed.height = 0;
+			}
+			return collapsed;
 		}
 	};
 
@@ -488,6 +572,10 @@
 			this.#baseY = this.rect.height * (1 - getScalePosition(0, min, max));
 			for (const [datasetIndex, dataset] of datasets.entries()) {
 				const points = [];
+				if (!this.chart.isDatasetVisible(datasetIndex)) {
+					this.#points.push(points);
+					continue;
+				}
 				for (const [index, value] of dataset.data.entries()) {
 					let x = labels.length === 1 ? this.rect.width / 2 : index * step;
 					if (scatter) x = this.rect.width * getScalePosition(value.x, minX, maxX);
@@ -601,7 +689,11 @@
 				}
 				if (item.interactive) {
 					hit.arc(x, y, Math.max(6, item.pointRadius), 0, Math.PI * 2);
-					this.addHitRegion(hit, item);
+					this.addHitRegion(hit, {
+						...item,
+						anchorX: x,
+						anchorY: y
+					});
 				}
 				previous = {
 					x,
@@ -632,7 +724,7 @@
 			for (const [datasetIndex, dataset] of this.chart.getData().entries()) {
 				const slices = [];
 				for (const [index, value] of dataset.data.entries()) slices.push({
-					angle: total ? value / largest / total * Math.PI * 2 : 0,
+					angle: total && this.chart.isDataVisible(datasetIndex, index) ? value / largest / total * Math.PI * 2 : 0,
 					backgroundColor: getColor(dataset, "backgroundColor", index),
 					borderColor: getColor(dataset, "borderColor", index),
 					borderWidth: dataset.borderWidth,
@@ -696,10 +788,255 @@
 						this.context.fillStyle = "rgba(255,255,255,.3)";
 						this.context.fill(path);
 					}
-					if (target && target.angle) this.addHitRegion(path, target);
+					if (target && target.angle) {
+						const anchorRadius = (innerRadius + radius) / 2;
+						this.addHitRegion(path, {
+							...target,
+							anchorX: x + Math.cos(middle) * anchorRadius,
+							anchorY: y + Math.sin(middle) * anchorRadius
+						});
+					}
 					start += angle;
 				}
 				this.#renderedSlices.push(rendered);
+			}
+		}
+	};
+
+// src/charts/polar-area.js
+/**
+	* Renders equal-angle sectors whose radius represents each value.
+	*/
+	var PolarAreaChart = class extends Layer {
+		#oldSectors = /* @__PURE__ */ new Map();
+		#renderedSectors = /* @__PURE__ */ new Map();
+		#sectors = /* @__PURE__ */ new Map();
+		/**
+		* Calculates target radii and angles for the visible data items.
+		*/
+		data() {
+			const labels = this.chart.getLabels();
+			const values = this.chart.getValues();
+			const angle = values.length ? Math.PI * 2 / values.length : 0;
+			const radius = this.rect.width / 2;
+			const maximum = this.chart.getScaleMax();
+			let start = -Math.PI / 2;
+			this.#oldSectors = this.#renderedSectors;
+			this.#sectors = /* @__PURE__ */ new Map();
+			for (const [datasetIndex, dataset] of this.chart.getData().entries()) for (const [index, value] of dataset.data.entries()) {
+				if (!this.chart.isDataVisible(datasetIndex, index)) continue;
+				this.#sectors.set(`${datasetIndex}:${index}`, {
+					start,
+					angle,
+					radius: radius * getScalePosition(value, 0, maximum),
+					backgroundColor: getColor(dataset, "backgroundColor", index),
+					borderColor: getColor(dataset, "borderColor", index),
+					borderWidth: dataset.borderWidth,
+					fillOpacity: dataset.fillOpacity,
+					label: labels[index],
+					datasetLabel: dataset.label,
+					datasetIndex,
+					index,
+					value
+				});
+				start += angle;
+			}
+		}
+		/**
+		* Interpolates sector radii and angles and registers visible hit regions.
+		* @param {number} [progress=1] The elapsed animation fraction.
+		*/
+		render(progress = 1) {
+			super.render();
+			const centerX = this.rect.width / 2;
+			const centerY = this.rect.height / 2;
+			const keys = /* @__PURE__ */ new Set([...this.#sectors.keys(), ...this.#oldSectors.keys()]);
+			this.#renderedSectors = /* @__PURE__ */ new Map();
+			for (const key of keys) {
+				const target = this.#sectors.get(key);
+				const previous = this.#oldSectors.get(key);
+				if (!target && progress === 1) continue;
+				const next = target || {
+					...previous,
+					radius: 0,
+					angle: 0
+				};
+				const old = previous || {
+					...next,
+					radius: 0
+				};
+				const item = { ...next };
+				for (const property of [
+					"start",
+					"angle",
+					"radius"
+				]) item[property] = old[property] + (next[property] - old[property]) * progress;
+				this.#renderedSectors.set(key, item);
+				if (!item.radius || !item.angle) continue;
+				const path = new Path2D();
+				path.moveTo(centerX, centerY);
+				path.arc(centerX, centerY, item.radius, item.start, item.start + item.angle);
+				path.closePath();
+				this.context.save();
+				this.context.globalAlpha = item.fillOpacity;
+				this.context.fillStyle = item.backgroundColor;
+				this.context.fill(path);
+				this.context.restore();
+				if (item.borderWidth) {
+					this.context.strokeStyle = item.borderColor;
+					this.context.lineWidth = item.borderWidth;
+					this.context.stroke(path);
+				}
+				if (this.active?.datasetIndex === item.datasetIndex && this.active.index === item.index) {
+					this.context.fillStyle = "rgba(255,255,255,.3)";
+					this.context.fill(path);
+				}
+				if (target) {
+					const middle = item.start + item.angle / 2;
+					this.addHitRegion(path, {
+						...item,
+						anchorX: centerX + Math.cos(middle) * item.radius * .65,
+						anchorY: centerY + Math.sin(middle) * item.radius * .65
+					});
+				}
+			}
+		}
+	};
+
+// src/charts/radar.js
+/**
+	* Connects each dataset around shared radial category axes.
+	*/
+	var RadarChart = class extends Layer {
+		#oldPoints = [];
+		#points = [];
+		#renderedPoints = [];
+		/**
+		* Includes point radii and borders beyond the outer radial guide.
+		*/
+		calculateCanvas() {
+			this.canvasRect = this.chart.outerRect;
+		}
+		/**
+		* Calculates radial targets while retaining the last visible positions.
+		*/
+		data() {
+			const labels = this.chart.getLabels();
+			const radius = this.rect.width / 2;
+			const maximum = this.chart.getScaleMax();
+			const centerX = this.rect.centerX - this.canvasRect.x;
+			const centerY = this.rect.centerY - this.canvasRect.y;
+			this.#oldPoints = this.#renderedPoints;
+			this.#points = this.chart.getData().map((dataset, datasetIndex) => {
+				if (!this.chart.isDatasetVisible(datasetIndex)) return [];
+				return dataset.data.map((value, index) => {
+					const angle = index * Math.PI * 2 / labels.length - Math.PI / 2;
+					const distance = radius * getScalePosition(value, 0, maximum);
+					return {
+						x: centerX + Math.cos(angle) * distance,
+						y: centerY + Math.sin(angle) * distance,
+						backgroundColor: getColor(dataset, "backgroundColor", index),
+						borderColor: getColor(dataset, "borderColor", index),
+						borderWidth: dataset.borderWidth,
+						pointRadius: dataset.pointRadius,
+						fillOpacity: dataset.fillOpacity,
+						label: labels[index],
+						datasetLabel: dataset.label,
+						datasetIndex,
+						index,
+						value
+					};
+				});
+			});
+		}
+		/**
+		* Interpolates each polygon from its visible positions or the radial center.
+		* @param {number} [progress=1] The elapsed animation fraction.
+		*/
+		render(progress = 1) {
+			super.render();
+			const centerX = this.rect.centerX - this.canvasRect.x;
+			const centerY = this.rect.centerY - this.canvasRect.y;
+			const count = Math.max(this.#points.length, this.#oldPoints.length);
+			this.#renderedPoints = [];
+			for (let datasetIndex = 0; datasetIndex < count; datasetIndex++) {
+				const targets = this.#points[datasetIndex] || [];
+				const previous = this.#oldPoints[datasetIndex] || [];
+				const points = [];
+				for (let index = 0; index < Math.max(targets.length, previous.length); index++) {
+					const target = targets[index];
+					const old = previous[index];
+					if (!target && progress === 1) continue;
+					const next = target || {
+						...old,
+						x: centerX,
+						y: centerY,
+						pointRadius: 0
+					};
+					const start = old || {
+						...next,
+						x: centerX,
+						y: centerY,
+						pointRadius: 0
+					};
+					points.push({
+						...next,
+						x: start.x + (next.x - start.x) * progress,
+						y: start.y + (next.y - start.y) * progress,
+						pointRadius: start.pointRadius + (next.pointRadius - start.pointRadius) * progress,
+						interactive: Boolean(target)
+					});
+				}
+				this.#renderedPoints.push(points);
+			}
+			for (const points of this.#renderedPoints) {
+				if (points.length < 3) continue;
+				const path = this.#polygon(points);
+				this.context.save();
+				this.context.globalAlpha = points[0].fillOpacity;
+				this.context.fillStyle = points[0].backgroundColor;
+				this.context.fill(path);
+				this.context.restore();
+			}
+			for (const points of this.#renderedPoints) this.#renderSeries(points);
+		}
+		/**
+		* Connects the visible points into a closed polygon.
+		* @param {object[]} points The interpolated points.
+		* @returns {Path2D} The polygon path.
+		*/
+		#polygon(points) {
+			const path = new Path2D();
+			for (const [index, point] of points.entries()) if (index) path.lineTo(point.x, point.y);
+			else path.moveTo(point.x, point.y);
+			path.closePath();
+			return path;
+		}
+		/**
+		* Draws the polygon outline and interactive points.
+		* @param {object[]} points The interpolated points.
+		*/
+		#renderSeries(points) {
+			if (!points.length) return;
+			if (points[0].borderWidth) {
+				this.context.strokeStyle = points[0].borderColor;
+				this.context.lineWidth = points[0].borderWidth;
+				this.context.stroke(this.#polygon(points));
+			}
+			for (const point of points) {
+				const path = new Path2D();
+				const hit = new Path2D();
+				path.arc(point.x, point.y, point.pointRadius, 0, Math.PI * 2);
+				this.context.fillStyle = point.backgroundColor;
+				this.context.fill(path);
+				if (point.interactive) {
+					hit.arc(point.x, point.y, Math.max(6, point.pointRadius), 0, Math.PI * 2);
+					this.addHitRegion(hit, {
+						...point,
+						anchorX: point.x,
+						anchorY: point.y
+					});
+				}
 			}
 		}
 	};
@@ -727,8 +1064,10 @@
 	* Draws grid lines, axis borders, and ticks behind the data layer.
 	*/
 	var Grid = class extends Layer {
+		#horizontal;
 		#labelsX;
 		#labelsY;
+		#numericX;
 		#plotRect;
 		/**
 		* Reserves tick space before calculating the plot.
@@ -737,8 +1076,11 @@
 		*/
 		calculate(chartRect, next) {
 			this.rect = chartRect.clone();
-			this.#labelsX = this.chart.options.type === "scatter" ? this.chart.getScale("x") : this.chart.getLabels();
-			this.#labelsY = this.chart.getScale();
+			const { type, orientation } = this.chart.options;
+			this.#horizontal = type === "bar" && orientation === "horizontal";
+			this.#numericX = type === "scatter" || this.#horizontal;
+			this.#labelsX = this.#numericX ? this.chart.getScale("x") : this.chart.getLabels();
+			this.#labelsY = this.#horizontal ? this.chart.getLabels() : this.chart.getScale();
 			const tickX = Math.min(chartRect.height, this.#tickLength("x"));
 			const tickY = Math.min(chartRect.width, this.#tickLength("y"));
 			chartRect.x += tickY;
@@ -869,7 +1211,7 @@
 		#x(index) {
 			const count = this.#labelsX.length;
 			const rect = this.#plotRect;
-			if (this.chart.options.type === "scatter") {
+			if (this.#numericX) {
 				const position = getScalePosition(this.#labelsX[index], this.#labelsX[0], this.#labelsX.at(-1));
 				return rect.left + position * rect.width;
 			}
@@ -882,6 +1224,7 @@
 		* @returns {number} The chart-local coordinate.
 		*/
 		#y(index) {
+			if (this.#horizontal) return this.#plotRect.top + (index + .5) * this.#plotRect.height / Math.max(1, this.#labelsY.length);
 			const value = this.#labelsY[index];
 			const minimum = this.#labelsY[0];
 			const maximum = this.#labelsY.at(-1);
@@ -950,6 +1293,41 @@
 		return lines;
 	}
 
+// src/layers/labels-r.js
+/**
+	* Draws centered radial scale numbers above the data fills.
+	*/
+	var LabelsR = class extends Layer {
+		/**
+		* Includes the text extending beyond the outer radial guide.
+		*/
+		calculateCanvas() {
+			this.canvasRect = this.chart.outerRect;
+		}
+		/**
+		* Renders numeric ticks along the upper vertical radius.
+		*/
+		render() {
+			super.render();
+			if (!this.settings.display || !this.chart.options.scales.r.display) return;
+			const ticks = this.chart.getScale();
+			const maximum = this.chart.getScaleMax();
+			const radius = this.rect.width / 2;
+			const centerX = this.rect.centerX - this.canvasRect.x;
+			const centerY = this.rect.centerY - this.canvasRect.y;
+			updateFont(this.context, this.settings.font);
+			this.context.fillStyle = this.settings.color;
+			this.context.textAlign = "center";
+			this.context.textBaseline = "middle";
+			for (const [index, value] of ticks.entries()) {
+				if (!value) continue;
+				const distance = radius * getScalePosition(value, 0, maximum);
+				const text = this.settings.callback ? this.settings.callback(value, index) : value;
+				this.context.fillText(String(text), centerX, centerY - distance);
+			}
+		}
+	};
+
 // src/layers/labels-x.js
 /**
 	* @import Rect from '../rect.js';
@@ -961,6 +1339,7 @@
 		#gridWidth;
 		#labels;
 		#metrics;
+		#numeric;
 		#offset;
 		#values;
 		/**
@@ -978,7 +1357,9 @@
 				return;
 			}
 			updateFont(this.context, this.settings.font);
-			this.#values = this.chart.options.type === "scatter" ? this.chart.getScale("x") : this.chart.getLabels();
+			const { type, orientation } = this.chart.options;
+			this.#numeric = type === "scatter" || type === "bar" && orientation === "horizontal";
+			this.#values = this.#numeric ? this.chart.getScale("x") : this.chart.getLabels();
 			this.#labels = this.#values.map((value, index) => {
 				const formatted = this.settings.callback ? this.settings.callback(value, index) : value;
 				return String(formatted);
@@ -992,16 +1373,12 @@
 			this.rect.y = chartRect.bottom - this.rect.height;
 			chartRect.height -= this.rect.height;
 			next(chartRect);
-			switch (this.chart.options.type) {
-				case "bar":
-					this.#gridWidth = chartRect.width / Math.max(1, this.#labels.length);
-					this.#offset = this.#gridWidth / 2;
-					break;
-				case "line":
-				case "area":
-				case "scatter":
-					this.#gridWidth = this.#labels.length > 1 ? chartRect.width / (this.#labels.length - 1) : 0;
-					this.#offset = this.#labels.length === 1 ? chartRect.width / 2 : 0;
+			if (type === "bar" && !this.#numeric) {
+				this.#gridWidth = chartRect.width / Math.max(1, this.#labels.length);
+				this.#offset = this.#gridWidth / 2;
+			} else {
+				this.#gridWidth = this.#labels.length > 1 ? chartRect.width / (this.#labels.length - 1) : 0;
+				this.#offset = this.#labels.length === 1 ? chartRect.width / 2 : 0;
 			}
 			this.rect.x = chartRect.left;
 			this.rect.width = chartRect.width;
@@ -1026,7 +1403,7 @@
 			for (const [i, value] of this.#labels.entries()) {
 				const { fontBoundingBoxAscent: ascent, width } = this.#metrics[i];
 				let position = i * this.#gridWidth + this.#offset;
-				if (this.chart.options.type === "scatter") position = getScalePosition(this.#values[i], this.#values[0], this.#values.at(-1)) * this.rect.width;
+				if (this.#numeric) position = getScalePosition(this.#values[i], this.#values[0], this.#values.at(-1)) * this.rect.width;
 				const labelX = position + this.#gridWidth / 2 - width / 2;
 				const labelY = ascent + this.settings.padding;
 				this.context.fillText(value, labelX, labelY);
@@ -1042,6 +1419,7 @@
 	* Lays out and renders numeric labels beside the plot.
 	*/
 	var LabelsY = class extends Layer {
+		#categorical;
 		#gridHeight;
 		#labels;
 		#metrics;
@@ -1061,7 +1439,9 @@
 				return;
 			}
 			updateFont(this.context, this.settings.font);
-			this.#values = this.chart.getScale();
+			const { type, orientation } = this.chart.options;
+			this.#categorical = type === "bar" && orientation === "horizontal";
+			this.#values = this.#categorical ? this.chart.getLabels() : this.chart.getScale();
 			this.#labels = this.#values.map((value, index) => {
 				const formatted = this.settings.callback ? this.settings.callback(value, index) : value;
 				return String(formatted);
@@ -1074,7 +1454,7 @@
 			next(chartRect);
 			this.rect.y = chartRect.top;
 			this.rect.height = chartRect.height;
-			this.#gridHeight = this.rect.height / (this.#labels.length - 1);
+			this.#gridHeight = this.rect.height / Math.max(1, this.#labels.length - 1);
 		}
 		/**
 		* Calculates the offscreen canvas bounds.
@@ -1096,7 +1476,7 @@
 			for (const [i, value] of this.#labels.entries()) {
 				const { fontBoundingBoxAscent: ascent, fontBoundingBoxDescent: descent } = this.#metrics[i];
 				const labelX = this.rect.width - this.settings.padding;
-				const position = getScalePosition(this.#values[i], this.#values[0], this.#values.at(-1));
+				const position = this.#categorical ? 1 - (i + .5) / this.#values.length : getScalePosition(this.#values[i], this.#values[0], this.#values.at(-1));
 				const offset = this.rect.y - this.canvasRect.y;
 				const labelY = (1 - position) * this.rect.height + offset + (ascent - descent) / 2;
 				this.context.fillText(value, labelX, labelY);
@@ -1116,6 +1496,14 @@
 		#lineHeight;
 		#rows;
 		#spacing;
+		/**
+		* Gets the visible legend entries in reading order.
+		* @returns {object[]} The dataset or slice keys.
+		*/
+		get items() {
+			if (!this.settings.display) return [];
+			return ((["top", "bottom"].includes(this.settings.position) ? this.#rows : this.#cols) || []).flatMap((group) => group.labels.map((label) => label.dataset));
+		}
 		/**
 		* Calculates the layer bounds before continuing layout.
 		* @param {Rect} chartRect The remaining chart rectangle.
@@ -1137,13 +1525,23 @@
 			const availableHeight = vertical ? this.rect.height : this.rect.height / 2;
 			const maxWidth = Math.min(this.settings.maxWidth ?? availableWidth, availableWidth);
 			const maxHeight = Math.min(this.settings.maxHeight ?? availableHeight, availableHeight);
-			let datasets = this.chart.getData();
-			if (["pie", "donut"].includes(this.chart.options.type)) {
+			let datasets = this.chart.getData().map((dataset, datasetIndex) => ({
+				...dataset,
+				datasetIndex,
+				visible: this.chart.isDatasetVisible(datasetIndex)
+			}));
+			if ([
+				"pie",
+				"donut",
+				"polarArea"
+			].includes(this.chart.options.type)) {
 				const labels = this.chart.getLabels();
 				datasets = datasets.flatMap((dataset) => {
 					return labels.map((label, index) => ({
 						...dataset,
 						label,
+						index,
+						visible: this.chart.isDataVisible(dataset.datasetIndex, index),
 						backgroundColor: [dataset.backgroundColor[index % dataset.backgroundColor.length]],
 						borderColor: [dataset.borderColor[index % dataset.borderColor.length]]
 					}));
@@ -1167,8 +1565,8 @@
 		* Renders the layer to its offscreen canvas.
 		*/
 		render() {
-			if (!this.settings.display) return;
 			super.render();
+			if (!this.settings.display) return;
 			updateFont(this.context, this.settings.labels.font);
 			this.context.textAlign = "left";
 			switch (this.settings.position) {
@@ -1333,85 +1731,224 @@
 		* Renders the horizontal legend rows.
 		*/
 		#renderHorizontal() {
-			let x;
 			let y = 0;
 			for (const row of this.#rows) {
-				x = 0;
+				let x = 0;
 				switch (this.settings.labels.textAlign) {
 					case "center":
-						x += (this.rect.width - row.width) / 2;
+						x = (this.rect.width - row.width) / 2;
 						break;
 					case "right":
 					case "end": x = this.rect.width - row.width;
 				}
 				for (const label of row.labels) {
-					let labelY = y;
-					const labelHeight = label.lines.length * this.#lineHeight;
-					if (labelHeight < this.settings.labels.boxHeight) labelY += (this.settings.labels.boxHeight - labelHeight) / 2;
-					const boxX = x;
-					const boxY = labelY + (labelHeight - this.settings.labels.boxHeight) / 2;
-					const boxPath = new Path2D();
-					boxPath.rect(boxX, boxY, this.settings.labels.boxWidth, this.settings.labels.boxHeight);
-					this.context.fillStyle = label.dataset.backgroundColor[0];
-					this.context.strokeStyle = label.dataset.borderColor[0];
-					this.context.fill(boxPath);
-					if (label.dataset.borderWidth) {
-						this.context.lineWidth = label.dataset.borderWidth;
-						this.context.stroke(boxPath);
-					}
-					x += this.settings.labels.boxWidth + this.#spacing;
-					const labelX = x;
-					this.context.fillStyle = this.settings.labels.color;
-					for (const [i, line] of label.lines.entries()) {
-						const metric = label.metrics[i];
-						this.context.fillText(line, labelX, labelY + metric.fontBoundingBoxAscent);
-						labelY += this.#lineHeight;
-					}
-					x += Math.max(0, ...label.metrics.map((metric) => metric.width)) + this.settings.labels.padding;
+					const textWidth = Math.max(0, ...label.metrics.map((metric) => metric.width));
+					const width = this.settings.labels.boxWidth + this.#spacing + textWidth;
+					this.#renderLabel(label, x, y, width, row.height);
+					x += width + this.settings.labels.padding;
 				}
 				y += row.height + this.settings.labels.padding;
 			}
 		}
 		/**
-		* Renders the vertical legend columns.
+		* Draws a legend swatch, label, hidden state, and interactive hit area.
+		* @param {object} label The wrapped legend entry.
+		* @param {number} x The left edge.
+		* @param {number} y The top edge.
+		* @param {number} width The item width.
+		* @param {number} height The item height.
+		*/
+		#renderLabel(label, x, y, width, height) {
+			const { dataset, lines, metrics } = label;
+			const { boxWidth, boxHeight, color } = this.settings.labels;
+			const textX = x + boxWidth + this.#spacing;
+			const textY = y + (height - lines.length * this.#lineHeight) / 2;
+			const box = new Path2D();
+			box.rect(x, y + (height - boxHeight) / 2, boxWidth, boxHeight);
+			this.context.save();
+			this.context.globalAlpha = dataset.visible ? 1 : .4;
+			this.context.fillStyle = dataset.backgroundColor[0];
+			this.context.fill(box);
+			if (dataset.borderWidth) {
+				this.context.lineWidth = dataset.borderWidth;
+				this.context.strokeStyle = dataset.borderColor[0];
+				this.context.stroke(box);
+			}
+			this.context.fillStyle = color;
+			for (const [index, line] of lines.entries()) {
+				const baseline = textY + index * this.#lineHeight + metrics[index].fontBoundingBoxAscent;
+				this.context.fillText(line, textX, baseline);
+				if (!dataset.visible) {
+					const middle = baseline - this.settings.labels.font.size / 3;
+					this.context.beginPath();
+					this.context.moveTo(textX, middle);
+					this.context.lineTo(textX + metrics[index].width, middle);
+					this.context.strokeStyle = color;
+					this.context.lineWidth = 1;
+					this.context.stroke();
+				}
+			}
+			this.context.restore();
+			const hit = new Path2D();
+			hit.rect(x, y, width, height);
+			this.addHitRegion(hit, dataset);
+			if (this.active?.datasetIndex === dataset.datasetIndex && this.active.index === dataset.index) {
+				this.context.strokeStyle = color;
+				this.context.lineWidth = 1;
+				this.context.stroke(hit);
+			}
+		}
+		/**
+		* Renders the vertical legend columns with a shared label edge.
 		*/
 		#renderVertical() {
 			let x = 0;
-			let y;
 			for (const col of this.#cols) {
-				y = 0;
+				let y = 0;
 				for (const label of col.labels) {
-					const labelHeight = label.lines.length * this.#lineHeight;
-					let boxX = x;
-					const boxY = y + (labelHeight - this.settings.labels.boxHeight) / 2;
+					const height = Math.max(label.lines.length * this.#lineHeight, this.settings.labels.boxHeight);
+					let labelX = x;
 					switch (this.settings.labels.textAlign) {
 						case "center":
-							boxX += (col.width - label.width) / 2;
+							labelX += (col.width - label.width) / 2;
 							break;
 						case "right":
-						case "end": boxX += col.width - label.width;
+						case "end": labelX += col.width - label.width;
 					}
-					const boxPath = new Path2D();
-					boxPath.rect(boxX, boxY, this.settings.labels.boxWidth, this.settings.labels.boxHeight);
-					this.context.fillStyle = label.dataset.backgroundColor[0];
-					this.context.strokeStyle = label.dataset.borderColor[0];
-					this.context.fill(boxPath);
-					if (label.dataset.borderWidth) {
-						this.context.lineWidth = label.dataset.borderWidth;
-						this.context.stroke(boxPath);
-					}
-					this.context.fillStyle = this.settings.labels.color;
-					const labelX = boxX + this.settings.labels.boxWidth + this.#spacing;
-					let labelY = y;
-					for (const [i, line] of label.lines.entries()) {
-						const { fontBoundingBoxAscent: ascent } = label.metrics[i];
-						this.context.fillText(line, labelX, labelY + ascent);
-						labelY += this.#lineHeight;
-					}
-					y += Math.max(labelHeight, this.settings.labels.boxHeight) + this.settings.labels.padding;
+					this.#renderLabel(label, labelX, y, label.width, height);
+					y += height + this.settings.labels.padding;
 				}
 				x += col.width + this.settings.labels.padding;
 			}
+		}
+	};
+
+// src/layers/radial-grid.js
+/**
+	* @import Rect from '../rect.js';
+	*/
+	/**
+	* Reserves a circular plot and draws radial guides and category labels.
+	*/
+	var RadialGrid = class extends Layer {
+		#labels = [];
+		#plotRect;
+		/**
+		* Centers a square plot while reserving room for the surrounding labels.
+		* @param {Rect} chartRect The remaining chart rectangle.
+		* @param {Function} next The next layout callback.
+		*/
+		calculate(chartRect, next) {
+			this.rect = chartRect.clone();
+			const labels = this.chart.getLabels();
+			this.#labels = labels;
+			if (this.chart.options.type === "polarArea") this.#labels = this.chart.getData().flatMap((dataset, datasetIndex) => {
+				return labels.filter((label, index) => this.chart.isDataVisible(datasetIndex, index));
+			});
+			let paddingX = 0;
+			let paddingY = 0;
+			if (this.settings.display && this.settings.ticks.display) {
+				const font = this.settings.ticks.font;
+				paddingY = Math.min(chartRect.height / 4, font.size * font.lineHeight / 2);
+			}
+			if (this.settings.display && this.settings.labels.display) {
+				const { font, padding } = this.settings.labels;
+				updateFont(this.context, font);
+				const widths = this.#labels.map((label) => measureText(this.context, label).width);
+				paddingX = Math.min(chartRect.width / 4, Math.max(0, ...widths) + padding);
+				paddingY = Math.min(chartRect.height / 4, font.size * font.lineHeight + padding);
+			}
+			const size = Math.max(0, Math.min(chartRect.width - paddingX * 2, chartRect.height - paddingY * 2));
+			chartRect.x += (chartRect.width - size) / 2;
+			chartRect.y += (chartRect.height - size) / 2;
+			chartRect.width = size;
+			chartRect.height = size;
+			this.#plotRect = chartRect.clone();
+			next(chartRect);
+		}
+		/**
+		* Includes category labels outside the circular plot.
+		*/
+		calculateCanvas() {
+			this.canvasRect = this.chart.outerRect;
+		}
+		/**
+		* Draws polygon guides for radar or circular guides for polar area charts.
+		*/
+		render() {
+			super.render();
+			if (!this.settings.display) return;
+			const radar = this.chart.options.type === "radar";
+			const ticks = this.chart.getScale();
+			const maximum = this.chart.getScaleMax();
+			const radius = this.#plotRect.width / 2;
+			const centerX = this.#plotRect.centerX - this.canvasRect.x;
+			const centerY = this.#plotRect.centerY - this.canvasRect.y;
+			this.context.save();
+			this.context.translate(centerX, centerY);
+			this.context.strokeStyle = this.settings.grid.lineColor;
+			this.context.lineWidth = this.settings.grid.lineWidth || 1;
+			for (const value of ticks) {
+				if (!value) continue;
+				const distance = radius * getScalePosition(value, 0, maximum);
+				if (this.settings.grid.display && this.settings.grid.lineWidth) this.#renderRing(distance, radar);
+			}
+			if (radar && this.settings.grid.display && this.settings.grid.lineWidth) for (let index = 0; index < this.#labels.length; index++) {
+				const angle = index * Math.PI * 2 / this.#labels.length - Math.PI / 2;
+				this.context.beginPath();
+				this.context.moveTo(0, 0);
+				this.context.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+				this.context.stroke();
+			}
+			this.context.restore();
+			if (this.settings.labels.display) this.#renderLabels(centerX, centerY, radius, radar);
+		}
+		/**
+		* Draws category labels around the radial plot with outward alignment.
+		* @param {number} centerX The local center x coordinate.
+		* @param {number} centerY The local center y coordinate.
+		* @param {number} radius The plot radius.
+		* @param {boolean} radar Whether labels align with spokes instead of sectors.
+		*/
+		#renderLabels(centerX, centerY, radius, radar) {
+			const { font, padding, color } = this.settings.labels;
+			updateFont(this.context, font);
+			this.context.fillStyle = color;
+			for (const [index, label] of this.#labels.entries()) {
+				const angle = (index + (radar ? 0 : .5)) * Math.PI * 2 / this.#labels.length - Math.PI / 2;
+				const cosine = Math.cos(angle);
+				const sine = Math.sin(angle);
+				const x = centerX + cosine * (radius + padding);
+				const y = centerY + sine * (radius + padding);
+				this.context.textAlign = cosine > 0 ? "left" : "right";
+				this.context.textBaseline = sine > 0 ? "top" : "bottom";
+				let available = cosine > 0 ? this.canvasRect.width - x : x;
+				if (Math.abs(cosine) < .01) {
+					this.context.textAlign = "center";
+					available = this.canvasRect.width;
+				}
+				if (Math.abs(sine) < .01) this.context.textBaseline = "middle";
+				this.context.fillText(label, x, y, Math.max(1, available));
+			}
+		}
+		/**
+		* Draws a single radial scale ring.
+		* @param {number} radius The ring radius.
+		* @param {boolean} polygon Whether to connect the radar spokes.
+		*/
+		#renderRing(radius, polygon) {
+			this.context.beginPath();
+			if (polygon && this.#labels.length >= 3) {
+				for (let index = 0; index < this.#labels.length; index++) {
+					const angle = index * Math.PI * 2 / this.#labels.length - Math.PI / 2;
+					const x = Math.cos(angle) * radius;
+					const y = Math.sin(angle) * radius;
+					if (index) this.context.lineTo(x, y);
+					else this.context.moveTo(x, y);
+				}
+				this.context.closePath();
+			} else this.context.arc(0, 0, radius, 0, Math.PI * 2);
+			this.context.stroke();
 		}
 	};
 
@@ -1542,7 +2079,7 @@
 
 // src/layers/tooltip.js
 /**
-	* Renders the hovered item's label and value above the other chart layers.
+	* Renders a rounded tooltip beside the pointer or anchored to a data mark.
 	*/
 	var Tooltip = class extends Layer {
 		/**
@@ -1552,11 +2089,11 @@
 			this.canvasRect = this.chart.outerRect;
 		}
 		/**
-		* Draws the active item near the pointer or in the upper-right corner.
+		* Measures the label and chooses a placement that fits within the canvas.
 		*/
 		render() {
 			super.render();
-			if (!this.settings.display || !this.active) return;
+			if (!this.settings.display || !this.active || !this.canvasRect.width || !this.canvasRect.height) return;
 			updateFont(this.context, this.settings.font);
 			const { padding, font } = this.settings;
 			const maxWidth = Math.max(0, this.canvasRect.width - padding * 2);
@@ -1566,22 +2103,126 @@
 			const textWidth = Math.max(0, ...lines.map((line) => measureText(this.context, line).width));
 			const width = Math.min(this.canvasRect.width, textWidth + padding * 2);
 			const height = Math.min(this.canvasRect.height, lines.length * lineHeight + padding * 2);
-			const pointerX = this.active.x - this.canvasRect.x;
-			const pointerY = this.active.y - this.canvasRect.y;
-			let x = Math.max(0, Math.min(pointerX + 10, this.canvasRect.width - width));
-			let y = Math.max(0, Math.min(pointerY + 10, this.canvasRect.height - height));
-			if (this.settings.position === "fixed") {
-				x = this.canvasRect.width - width;
-				y = 0;
-			}
+			const fixed = this.settings.position === "fixed";
+			const anchorX = (fixed ? this.active.anchorX : this.active.x) - this.canvasRect.x;
+			const anchorY = (fixed ? this.active.anchorY : this.active.y) - this.canvasRect.y;
+			const preferred = fixed ? this.active.placement || "top" : "top";
+			const { x, y, side } = this.#place(width, height, anchorX, anchorY, preferred);
+			const radius = Math.min(this.settings.borderRadius, width / 2, height / 2);
+			const path = new Path2D();
+			path.roundRect(x, y, width, height, radius);
+			this.#addArrow(path, {
+				x,
+				y,
+				width,
+				height,
+				radius,
+				side,
+				anchorX,
+				anchorY
+			});
 			this.context.fillStyle = this.settings.backgroundColor;
-			this.context.fillRect(x, y, width, height);
+			this.context.fill(path);
+			this.context.save();
+			this.context.beginPath();
+			this.context.roundRect(x, y, width, height, radius);
+			this.context.clip();
 			this.context.fillStyle = this.settings.color;
 			this.context.textBaseline = "middle";
 			for (const [index, line] of lines.entries()) {
 				const lineY = y + padding + (index + .5) * lineHeight;
 				this.context.fillText(line, x + padding, lineY);
 			}
+			this.context.restore();
+		}
+		/**
+		* Adds a small pointer to the same fill path, avoiding overlapping opacity.
+		* @param {Path2D} path The tooltip outline.
+		* @param {object} bounds The body bounds and anchor position.
+		*/
+		#addArrow(path, bounds) {
+			const { x, y, width, height, radius, side, anchorX, anchorY } = bounds;
+			const vertical = side === "top" || side === "bottom";
+			const length = vertical ? width : height;
+			const size = Math.min(this.settings.arrowSize, Math.max(0, length / 2 - radius));
+			if (!size) return;
+			const start = vertical ? x : y;
+			const anchor = vertical ? anchorX : anchorY;
+			const center = Math.max(start + radius + size, Math.min(anchor, start + length - radius - size));
+			if (vertical) {
+				const edge = side === "top" ? y + height : y;
+				const tip = edge + (side === "top" ? size : -size);
+				path.moveTo(center - size, edge);
+				path.lineTo(center, tip);
+				path.lineTo(center + size, edge);
+			} else {
+				const edge = side === "left" ? x + width : x;
+				const tip = edge + (side === "left" ? size : -size);
+				path.moveTo(edge, center - size);
+				path.lineTo(tip, center);
+				path.lineTo(edge, center + size);
+			}
+			path.closePath();
+		}
+		/**
+		* Prefers the mark's outward side, flips at edges, and clamps oversized labels.
+		* @param {number} width The tooltip width.
+		* @param {number} height The tooltip height.
+		* @param {number} anchorX The anchor's local x coordinate.
+		* @param {number} anchorY The anchor's local y coordinate.
+		* @param {string} preferred The preferred side of the anchor.
+		* @returns {object} The body position and chosen side.
+		*/
+		#place(width, height, anchorX, anchorY, preferred) {
+			const gap = this.settings.arrowSize + 6;
+			const opposite = {
+				top: "bottom",
+				bottom: "top",
+				left: "right",
+				right: "left"
+			};
+			const candidates = {
+				top: {
+					x: anchorX - width / 2,
+					y: anchorY - height - gap
+				},
+				bottom: {
+					x: anchorX - width / 2,
+					y: anchorY + gap
+				},
+				right: {
+					x: anchorX + gap,
+					y: anchorY - height / 2
+				},
+				left: {
+					x: anchorX - width - gap,
+					y: anchorY - height / 2
+				}
+			};
+			const sides = [
+				preferred,
+				opposite[preferred],
+				"top",
+				"bottom",
+				"right",
+				"left"
+			];
+			const maxX = this.canvasRect.width - width;
+			const maxY = this.canvasRect.height - height;
+			for (const side of sides) {
+				const candidate = candidates[side];
+				if (side === "top" || side === "bottom" ? candidate.y >= 0 && candidate.y <= maxY : candidate.x >= 0 && candidate.x <= maxX) return {
+					x: Math.max(0, Math.min(candidate.x, maxX)),
+					y: Math.max(0, Math.min(candidate.y, maxY)),
+					side
+				};
+			}
+			const candidate = candidates[preferred];
+			return {
+				x: Math.max(0, Math.min(candidate.x, maxX)),
+				y: Math.max(0, Math.min(candidate.y, maxY)),
+				side: preferred
+			};
 		}
 	};
 
@@ -1679,9 +2320,13 @@
 			"area",
 			"pie",
 			"donut",
-			"scatter"
-		].includes(options.type)) throw new TypeError("Chart type must be bar, line, area, pie, donut, or scatter.");
+			"scatter",
+			"polarArea",
+			"radar"
+		].includes(options.type)) throw new TypeError("Chart type must be bar, line, area, pie, donut, scatter, polarArea, or radar.");
 		if (!options.font || !options.title || !options.legend?.labels || !options.tooltip) throw new TypeError("Chart options require font, title, legend, and tooltip settings.");
+		if (!["vertical", "horizontal"].includes(options.orientation)) throw new TypeError("Bar orientation must be vertical or horizontal.");
+		if (typeof options.stacked !== "boolean" || typeof options.legend.interactive !== "boolean") throw new TypeError("Stacked and legend.interactive must be booleans.");
 		validateFont(options.font, "font");
 		validateDimension(options.layout?.padding, "layout.padding");
 		validateDimension(options.animation?.duration, "animation.duration");
@@ -1706,7 +2351,18 @@
 		if (options.legend.maxHeight != null) validateDimension(options.legend.maxHeight, "legend.maxHeight");
 		validateAxis(options.scales?.x, options.font, "scales.x");
 		validateAxis(options.scales?.y, options.font, "scales.y");
+		const radial = options.scales.r;
+		if (!radial?.grid || !radial.ticks || !radial.labels) throw new TypeError("scales.r requires grid, ticks, and labels settings.");
+		validateDimension(radial.grid.lineWidth, "scales.r.grid.lineWidth");
+		validateDimension(radial.labels.padding, "scales.r.labels.padding");
+		if (radial.ticks.callback != null && typeof radial.ticks.callback !== "function") throw new TypeError("scales.r.ticks.callback must be a function.");
+		for (const name of ["ticks", "labels"]) {
+			radial[name].font = mergeOptions(options.font, radial[name].font);
+			validateFont(radial[name].font, `scales.r.${name}.font`);
+		}
 		validateDimension(options.tooltip.padding, "tooltip.padding");
+		validateDimension(options.tooltip.borderRadius, "tooltip.borderRadius");
+		validateDimension(options.tooltip.arrowSize, "tooltip.arrowSize");
 		options.tooltip.font = mergeOptions(options.font, options.tooltip.font);
 		validateFont(options.tooltip.font, "tooltip.font");
 		return options;
@@ -1787,8 +2443,10 @@
 	*/
 	/**
 	* @typedef {object} ChartOptions
-	* @property {'bar'|'line'|'area'|'pie'|'donut'|'scatter'} [type='bar'] The chart type.
+	* @property {'bar'|'line'|'area'|'pie'|'donut'|'scatter'|'polarArea'|'radar'} [type='bar'] The chart type.
 	* @property {ChartData} [data] The category labels and datasets.
+	* @property {'vertical'|'horizontal'} [orientation='vertical'] The bar direction.
+	* @property {boolean} [stacked=false] Whether bar datasets share a stack.
 	* @property {object} [font] The font inherited by chart layers.
 	* @property {object} [title] The title text, position, and appearance.
 	* @property {object} [legend] The legend position, bounds, and labels.
@@ -1811,6 +2469,8 @@
 		*/
 		static defaults = {
 			type: "bar",
+			orientation: "vertical",
+			stacked: false,
 			data: {
 				labels: [],
 				datasets: []
@@ -1824,9 +2484,11 @@
 			ariaLabel: "Chart",
 			tooltip: {
 				display: true,
-				padding: 8,
+				padding: 10,
+				borderRadius: 6,
+				arrowSize: 5,
 				position: "cursor",
-				backgroundColor: "#000",
+				backgroundColor: "rgba(24, 28, 36, .92)",
 				color: "#fff",
 				font: {}
 			},
@@ -1844,12 +2506,13 @@
 					size: 18,
 					weight: "bold"
 				},
-				color: "#000",
+				color: "#334155",
 				position: "top",
 				align: "center"
 			},
 			legend: {
 				display: true,
+				interactive: true,
 				position: "top",
 				align: "center",
 				maxHeight: null,
@@ -1859,19 +2522,39 @@
 					boxHeight: 12,
 					font: {},
 					padding: 10,
-					color: "#000",
-					textAlign: "center"
+					color: "#334155",
+					textAlign: "start"
 				}
 			},
 			scales: {
+				r: {
+					display: true,
+					grid: {
+						display: true,
+						lineColor: "#e2e8f0",
+						lineWidth: 1
+					},
+					ticks: {
+						display: true,
+						font: {},
+						color: "#334155",
+						callback: null
+					},
+					labels: {
+						display: true,
+						font: {},
+						color: "#334155",
+						padding: 8
+					}
+				},
 				x: {
 					display: true,
 					grid: {
 						display: true,
 						drawBorder: true,
-						borderColor: "#000",
+						borderColor: "#cbd5e1",
 						borderWidth: 1,
-						lineColor: "#aaa",
+						lineColor: "#e2e8f0",
 						lineWidth: 1,
 						tickLength: 8
 					},
@@ -1879,7 +2562,7 @@
 						display: true,
 						font: {},
 						padding: 5,
-						color: "#000",
+						color: "#334155",
 						callback: null,
 						drawTicks: true
 					}
@@ -1889,9 +2572,9 @@
 					grid: {
 						display: true,
 						drawBorder: true,
-						borderColor: "#000",
+						borderColor: "#cbd5e1",
 						borderWidth: 1,
-						lineColor: "#aaa",
+						lineColor: "#e2e8f0",
 						lineWidth: 1,
 						tickLength: 8
 					},
@@ -1899,10 +2582,9 @@
 						display: true,
 						font: {},
 						padding: 5,
-						color: "#000",
+						color: "#334155",
 						callback: null,
-						drawTicks: true,
-						tickColor: "#aaa"
+						drawTicks: true
 					}
 				}
 			},
@@ -1914,6 +2596,8 @@
 		static Legend = Legend;
 		static Line = LineChart;
 		static Pie = PieChart;
+		static PolarArea = PolarAreaChart;
+		static Radar = RadarChart;
 		static Rect = Rect;
 		static Scatter = LineChart;
 		static Title = Title;
@@ -1925,12 +2609,16 @@
 		#eventsController = null;
 		#frame = null;
 		#height = 0;
+		#hiddenDatasets = /* @__PURE__ */ new Set();
+		#hiddenItems = /* @__PURE__ */ new Set();
 		#inputOptions = null;
 		#layers = {};
+		#legendControls = null;
 		#node = null;
 		#observer = null;
 		#outerRect = null;
 		#pixelRatio = 1;
+		#pointer = null;
 		#progress = 1;
 		#scale = [0, 1];
 		#scaleX = [0, 1];
@@ -1961,7 +2649,7 @@
 			try {
 				this.#inputOptions = mergeOptions(this.constructor.defaults, options);
 				this.#settings = normalizeOptions(mergeOptions(this.#inputOptions));
-				this.#data = normalizeData(this.#settings.data, this.#settings.type);
+				this.#data = normalizeData(this.#settings.data, this.#settings.type, this.#settings.stacked);
 				this.#canvas = node.ownerDocument.createElement("canvas");
 				this.#canvas.setAttribute("role", "img");
 				this.#canvas.style.display = "block";
@@ -2015,9 +2703,14 @@
 		calculate() {
 			if (!this.node) return;
 			const padding = Math.min(this.#settings.layout.padding, this.#width / 2, this.#height / 2);
-			const maxSteps = Math.floor(this.#height / (this.#settings.font.size * 2.5));
+			const horizontal = this.#settings.type === "bar" && this.#settings.orientation === "horizontal";
+			const scaleSize = horizontal ? this.#width : this.#height;
+			const tickSize = this.#settings.font.size * (horizontal ? 5 : 2.5);
+			const maxSteps = ["radar", "polarArea"].includes(this.#settings.type) ? 5 : Math.floor(scaleSize / tickSize);
 			this.#outerRect = new Rect(padding, padding, Math.max(0, this.#width - padding * 2), Math.max(0, this.#height - padding * 2));
-			this.#scale = createScale(this.getValues(), maxSteps);
+			const values = this.#settings.type === "bar" && this.#settings.stacked ? this.#getStackTotals() : this.getValues();
+			this.#scale = createScale(values, maxSteps);
+			this.#scaleX = horizontal ? this.#scale : [0, 1];
 			if (this.#settings.type === "scatter") {
 				const maxStepsX = Math.floor(this.#width / (this.#settings.font.size * 5));
 				this.#scaleX = createScale(this.getValues("x"), maxStepsX);
@@ -2044,12 +2737,14 @@
 			this.#eventsController?.abort();
 			this.#observer?.disconnect();
 			this.#canvas?.remove();
+			this.#legendControls?.remove();
 			Chart.#instances.delete(this.#node);
 			this.#canvas = null;
 			this.#context = null;
 			this.#data = null;
 			this.#eventsController = null;
 			this.#inputOptions = null;
+			this.#legendControls = null;
 			this.#layers = {};
 			this.#node = null;
 			this.#observer = null;
@@ -2061,7 +2756,7 @@
 		*/
 		draw() {
 			if (!this.node) return;
-			this.#context.clearRect(0, 0, this.#width, this.#height);
+			this.#context.clearRect(0, 0, this.#canvas.width / this.#pixelRatio, this.#canvas.height / this.#pixelRatio);
 			for (const layer of Object.values(this.#layers)) layer.draw(this.#context);
 		}
 		/**
@@ -2103,14 +2798,38 @@
 			return (axis === "x" ? this.#scaleX : this.#scale)[0];
 		}
 		/**
-		* Gets the numeric values from all datasets.
+		* Gets the numeric values from visible datasets and data items.
 		* @param {string} [axis='y'] The coordinate to read for scatter data.
 		* @returns {number[]} The dataset values.
 		*/
 		getValues(axis = "y") {
 			if (!this.#data) return [];
-			const values = this.#data.datasets.flatMap((dataset) => dataset.data);
+			const values = this.#data.datasets.flatMap((dataset, datasetIndex) => {
+				return dataset.data.filter((value, index) => this.isDataVisible(datasetIndex, index));
+			});
 			return this.#settings.type === "scatter" ? values.map((point) => point[axis]) : values;
+		}
+		/**
+		* Checks whether a dataset is enabled.
+		* @param {number} index The dataset index.
+		* @returns {boolean} Whether the dataset is visible.
+		*/
+		isDatasetVisible(index) {
+			return Boolean(this.#data?.datasets[index]) && !this.#hiddenDatasets.has(index);
+		}
+		/**
+		* Checks whether a data item and its dataset are enabled.
+		* @param {number} datasetIndex The dataset index.
+		* @param {number} index The item index.
+		* @returns {boolean} Whether the item is visible.
+		*/
+		isDataVisible(datasetIndex, index) {
+			const circular = [
+				"pie",
+				"donut",
+				"polarArea"
+			].includes(this.#settings?.type);
+			return this.#data?.datasets[datasetIndex]?.data[index] != null && this.isDatasetVisible(datasetIndex) && (!circular || !this.#hiddenItems.has(`${datasetIndex}:${index}`));
 		}
 		/**
 		* Renders the layers at their final positions without starting an animation.
@@ -2121,6 +2840,7 @@
 			this.#clearActive();
 			this.#progress = 1;
 			for (const layer of Object.values(this.#layers)) layer.render();
+			this.#syncLegendControls();
 			this.draw();
 		}
 		/**
@@ -2167,7 +2887,8 @@
 				const progress = Math.min(1, Math.max(0, elapsed / duration));
 				this.#progress = ease(progress, this.#settings.animation.easing);
 				this.#layers.chart.render(this.#progress);
-				this.draw();
+				if (this.#pointer) this.#setActive(this.#layers.chart.hitTest(this.#pointer.x, this.#pointer.y));
+				else this.draw();
 				if (progress < 1) this.#frame = this.#window.requestAnimationFrame(tick);
 			};
 			this.#progress = 0;
@@ -2181,8 +2902,37 @@
 		*/
 		setData(data = this.#data) {
 			if (!this.node) return;
-			const normalized = normalizeData(data, this.#settings.type);
+			const normalized = normalizeData(data, this.#settings.type, this.#settings.stacked);
 			this.#data = normalized;
+			this.#pruneVisibility();
+			this.update();
+		}
+		/**
+		* Shows or hides a dataset without removing its values or changing its color.
+		* @param {number} index The dataset index.
+		* @param {boolean} visible Whether to show the dataset.
+		*/
+		setDatasetVisibility(index, visible) {
+			if (!this.#data?.datasets[index]) return;
+			if (visible) this.#hiddenDatasets.delete(index);
+			else this.#hiddenDatasets.add(index);
+			this.update();
+		}
+		/**
+		* Shows or hides an individual slice in a circular chart.
+		* @param {number} datasetIndex The dataset index.
+		* @param {number} index The item index.
+		* @param {boolean} visible Whether to show the item.
+		*/
+		setDataVisibility(datasetIndex, index, visible) {
+			if (![
+				"pie",
+				"donut",
+				"polarArea"
+			].includes(this.#settings?.type) || this.#data?.datasets[datasetIndex]?.data[index] == null) return;
+			const key = `${datasetIndex}:${index}`;
+			if (visible) this.#hiddenItems.delete(key);
+			else this.#hiddenItems.add(key);
 			this.update();
 		}
 		/**
@@ -2193,11 +2943,12 @@
 			if (!this.node) return;
 			const inputOptions = mergeOptions(this.#inputOptions, settings);
 			const options = normalizeOptions(mergeOptions(inputOptions));
-			const data = normalizeData(settings.data ?? this.#data, options.type);
+			const data = normalizeData(settings.data ?? this.#data, options.type, options.stacked);
 			this.#stop();
 			this.#inputOptions = inputOptions;
 			this.#settings = options;
 			this.#data = data;
+			this.#pruneVisibility();
 			this.#build();
 			if (this.#settings.responsive) this.resize();
 			this.update();
@@ -2220,7 +2971,8 @@
 				title: new Title(this, this.#settings.title),
 				legend: new Legend(this, this.#settings.legend)
 			};
-			if (!["pie", "donut"].includes(this.#settings.type)) {
+			if (["radar", "polarArea"].includes(this.#settings.type)) this.#layers.grid = new RadialGrid(this, this.#settings.scales.r);
+			else if (!["pie", "donut"].includes(this.#settings.type)) {
 				this.#layers.ticksX = new LabelsX(this, this.#settings.scales.x.ticks);
 				this.#layers.ticksY = new LabelsY(this, this.#settings.scales.y.ticks);
 				this.#layers.grid = new Grid(this, this.#settings.scales);
@@ -2234,15 +2986,23 @@
 				case "scatter":
 					this.#layers.chart = new LineChart(this, this.#settings.scales);
 					break;
+				case "radar":
+					this.#layers.chart = new RadarChart(this, this.#settings.scales.r);
+					break;
+				case "polarArea":
+					this.#layers.chart = new PolarAreaChart(this, this.#settings.scales.r);
+					break;
 				case "pie":
 				case "donut": this.#layers.chart = new PieChart(this, this.#settings.scales);
 			}
+			if (["radar", "polarArea"].includes(this.#settings.type)) this.#layers.ticksR = new LabelsR(this, this.#settings.scales.r.ticks);
 			this.#layers.tooltip = new Tooltip(this, this.#settings.tooltip);
 		}
 		/**
 		* Clears pointer state before a data, layout, or settings update.
 		*/
 		#clearActive() {
+			this.#pointer = null;
 			this.#layers.chart.setActive(null);
 			this.#layers.tooltip.setActive(null);
 			this.#canvas.removeAttribute("aria-description");
@@ -2254,14 +3014,24 @@
 			this.#eventsController = new this.#window.AbortController();
 			const { signal } = this.#eventsController;
 			this.#canvas.addEventListener("pointermove", (event) => {
-				const rect = this.#canvas.getBoundingClientRect();
-				if (!rect.width || !rect.height) return;
-				const x = (event.clientX - rect.left) * this.#width / rect.width;
-				const y = (event.clientY - rect.top) * this.#height / rect.height;
-				const item = this.#layers.chart.hitTest(x, y);
+				const point = this.#pointerPosition(event);
+				if (!point) return;
+				this.#pointer = point;
+				const legend = this.#settings.legend.interactive && this.#layers.legend.hitTest(point.x, point.y);
+				const item = legend ? null : this.#layers.chart.hitTest(point.x, point.y);
+				this.#canvas.style.cursor = legend ? "pointer" : "";
 				this.#setActive(item);
 			}, { signal });
+			this.#canvas.addEventListener("click", (event) => {
+				const point = this.#pointerPosition(event);
+				if (point && this.#settings.legend.interactive) {
+					const item = this.#layers.legend.hitTest(point.x, point.y);
+					if (item) this.#toggleLegendItem(item);
+				}
+			}, { signal });
 			this.#canvas.addEventListener("pointerleave", () => {
+				this.#pointer = null;
+				this.#canvas.style.cursor = "";
 				this.#setActive(null);
 			}, { signal });
 			this.#window.addEventListener("resize", () => {
@@ -2275,6 +3045,46 @@
 			}
 		}
 		/**
+		* Calculates positive and negative stack extents independently.
+		* @returns {number[]} The visible stack totals.
+		*/
+		#getStackTotals() {
+			return this.#data.labels.flatMap((label, index) => {
+				let positive = 0;
+				let negative = 0;
+				for (const [datasetIndex, dataset] of this.#data.datasets.entries()) {
+					if (!this.isDataVisible(datasetIndex, index)) continue;
+					const value = dataset.data[index];
+					if (value < 0) negative += value;
+					else positive += value;
+				}
+				return [negative, positive];
+			});
+		}
+		/**
+		* Converts a pointer event to chart-local CSS coordinates.
+		* @param {PointerEvent|MouseEvent} event The pointer event.
+		* @returns {object|null} The coordinates, or null for a hidden canvas.
+		*/
+		#pointerPosition(event) {
+			const rect = this.#canvas.getBoundingClientRect();
+			if (!rect.width || !rect.height) return null;
+			return {
+				x: (event.clientX - rect.left) * this.#width / rect.width,
+				y: (event.clientY - rect.top) * this.#height / rect.height
+			};
+		}
+		/**
+		* Drops visibility state for datasets and items removed by a data update.
+		*/
+		#pruneVisibility() {
+			for (const index of this.#hiddenDatasets) if (!this.#data.datasets[index]) this.#hiddenDatasets.delete(index);
+			for (const key of this.#hiddenItems) {
+				const [datasetIndex, index] = key.split(":").map(Number);
+				if (this.#data.datasets[datasetIndex]?.data[index] == null) this.#hiddenItems.delete(key);
+			}
+		}
+		/**
 		* Updates the tooltip and pie highlight for the current pointer position.
 		* @param {object|null} item The hovered data item.
 		*/
@@ -2282,7 +3092,11 @@
 			this.#layers.chart.setActive(item);
 			this.#layers.tooltip.setActive(item);
 			this.#layers.tooltip.render();
-			if (["pie", "donut"].includes(this.#settings.type)) this.#layers.chart.render(this.#progress);
+			if ([
+				"pie",
+				"donut",
+				"polarArea"
+			].includes(this.#settings.type)) this.#layers.chart.render(this.#progress);
 			if (item && this.#settings.tooltip.display) this.#canvas.setAttribute("aria-description", `${item.label}. ${item.datasetLabel}: ${formatValue(item.value)}`);
 			else this.#canvas.removeAttribute("aria-description");
 			this.draw();
@@ -2297,12 +3111,61 @@
 			}
 		}
 		/**
+		* Keeps native keyboard and screen-reader controls in step with the canvas legend.
+		*/
+		#syncLegendControls() {
+			const items = this.#settings.legend.display && this.#settings.legend.interactive ? this.#layers.legend.items : [];
+			if (!this.#legendControls) {
+				this.#legendControls = this.node.ownerDocument.createElement("div");
+				this.#legendControls.setAttribute("role", "group");
+				this.#legendControls.setAttribute("aria-label", "Chart legend");
+				this.#legendControls.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);";
+				this.node.append(this.#legendControls);
+			}
+			for (const [index, item] of items.entries()) {
+				let button = this.#legendControls.children[index];
+				if (!button) {
+					button = this.node.ownerDocument.createElement("button");
+					button.type = "button";
+					const { signal } = this.#eventsController;
+					button.addEventListener("click", () => {
+						this.#toggleLegendItem(this.#layers.legend.items[index]);
+					}, { signal });
+					button.addEventListener("focus", () => {
+						this.#layers.legend.setActive(this.#layers.legend.items[index]);
+						this.#layers.legend.render();
+						this.draw();
+					}, { signal });
+					button.addEventListener("blur", () => {
+						this.#layers.legend.setActive(null);
+						this.#layers.legend.render();
+						this.draw();
+					}, { signal });
+					this.#legendControls.append(button);
+				}
+				button.textContent = item.label;
+				button.setAttribute("aria-pressed", String(item.visible));
+			}
+			while (this.#legendControls.children.length > items.length) this.#legendControls.lastElementChild.remove();
+			this.#legendControls.hidden = !items.length;
+		}
+		/**
+		* Toggles the dataset or slice represented by a legend key.
+		* @param {object} item The legend item.
+		*/
+		#toggleLegendItem(item) {
+			if (item.index == null) this.setDatasetVisibility(item.datasetIndex, !this.isDatasetVisible(item.datasetIndex));
+			else this.setDataVisibility(item.datasetIndex, item.index, !this.isDataVisible(item.datasetIndex, item.index));
+		}
+		/**
 		* Provides the chart's labels and values as accessible fallback text.
 		*/
 		#updateDescription() {
-			const datasets = this.#data.datasets.map((dataset) => {
+			const datasets = this.#data.datasets.map((dataset, datasetIndex) => {
 				const values = dataset.data.map((value, index) => {
-					return `${this.#data.labels[index] ?? `Point ${index + 1}`} ${formatValue(value)}`;
+					const label = this.#data.labels[index] ?? `Point ${index + 1}`;
+					const hidden = this.isDataVisible(datasetIndex, index) ? "" : " (hidden)";
+					return `${label} ${formatValue(value)}${hidden}`;
 				});
 				return `${dataset.label}: ${values.join(", ")}`;
 			});

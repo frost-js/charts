@@ -111,12 +111,20 @@ function validateAxis(axis, font, name) {
  * @returns {object} The validated options with resolved fonts.
  */
 export function normalizeOptions(options) {
-    if (!['bar', 'line', 'area', 'pie', 'donut', 'scatter'].includes(options.type)) {
-        throw new TypeError('Chart type must be bar, line, area, pie, donut, or scatter.');
+    if (!['bar', 'line', 'area', 'pie', 'donut', 'scatter', 'polarArea', 'radar'].includes(options.type)) {
+        throw new TypeError('Chart type must be bar, line, area, pie, donut, scatter, polarArea, or radar.');
     }
 
     if (!options.font || !options.title || !options.legend?.labels || !options.tooltip) {
         throw new TypeError('Chart options require font, title, legend, and tooltip settings.');
+    }
+
+    if (!['vertical', 'horizontal'].includes(options.orientation)) {
+        throw new TypeError('Bar orientation must be vertical or horizontal.');
+    }
+
+    if (typeof options.stacked !== 'boolean' || typeof options.legend.interactive !== 'boolean') {
+        throw new TypeError('Stacked and legend.interactive must be booleans.');
     }
 
     validateFont(options.font, 'font');
@@ -158,7 +166,27 @@ export function normalizeOptions(options) {
     validateAxis(options.scales?.x, options.font, 'scales.x');
     validateAxis(options.scales?.y, options.font, 'scales.y');
 
+    const radial = options.scales.r;
+
+    if (!radial?.grid || !radial.ticks || !radial.labels) {
+        throw new TypeError('scales.r requires grid, ticks, and labels settings.');
+    }
+
+    validateDimension(radial.grid.lineWidth, 'scales.r.grid.lineWidth');
+    validateDimension(radial.labels.padding, 'scales.r.labels.padding');
+
+    if (radial.ticks.callback != null && typeof radial.ticks.callback !== 'function') {
+        throw new TypeError('scales.r.ticks.callback must be a function.');
+    }
+
+    for (const name of ['ticks', 'labels']) {
+        radial[name].font = mergeOptions(options.font, radial[name].font);
+        validateFont(radial[name].font, `scales.r.${name}.font`);
+    }
+
     validateDimension(options.tooltip.padding, 'tooltip.padding');
+    validateDimension(options.tooltip.borderRadius, 'tooltip.borderRadius');
+    validateDimension(options.tooltip.arrowSize, 'tooltip.arrowSize');
     options.tooltip.font = mergeOptions(options.font, options.tooltip.font);
     validateFont(options.tooltip.font, 'tooltip.font');
 

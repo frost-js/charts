@@ -6,7 +6,7 @@
  * @property {string|string[]} [borderColor] The border color or repeating colors.
  * @property {number} [borderWidth=1] The border width in CSS pixels.
  * @property {number} [pointRadius=2] The point radius in CSS pixels; scatter defaults to 4.
- * @property {number} [fillOpacity=.2] The area fill opacity.
+ * @property {number} [fillOpacity=.2] The area or radar fill opacity; polar area defaults to .75.
  */
 
 /**
@@ -16,17 +16,17 @@
  */
 
 const defaultColors = [
-    '#2563eb',
-    '#dc2626',
-    '#059669',
-    '#9333ea',
-    '#d97706',
-    '#0891b2',
-    '#db2777',
-    '#65a30d',
-    '#ea580c',
-    '#4f46e5',
-    '#0d9488',
+    '#6366f1',
+    '#14b8a6',
+    '#f59e0b',
+    '#ec4899',
+    '#8b5cf6',
+    '#0ea5e9',
+    '#f97316',
+    '#84cc16',
+    '#06b6d4',
+    '#a855f7',
+    '#e11d48',
     '#64748b',
 ];
 
@@ -73,8 +73,8 @@ function normalizeValues(data, type, index) {
             throw new TypeError(`Dataset ${index} values must be finite numbers.`);
         }
 
-        if (['pie', 'donut'].includes(type) && value < 0) {
-            throw new RangeError(`Dataset ${index} pie and donut values must be nonnegative.`);
+        if (['pie', 'donut', 'polarArea', 'radar'].includes(type) && value < 0) {
+            throw new RangeError(`Dataset ${index} circular and radial values must be nonnegative.`);
         }
 
         return value;
@@ -102,7 +102,7 @@ function normalizeDataset(dataset, index, labelCount, type) {
 
     const borderWidth = dataset.borderWidth ?? 1;
     const pointRadius = dataset.pointRadius ?? (type === 'scatter' ? 4 : 2);
-    const fillOpacity = dataset.fillOpacity ?? .2;
+    const fillOpacity = dataset.fillOpacity ?? (type === 'polarArea' ? .75 : .2);
 
     if (!Number.isFinite(borderWidth) || borderWidth < 0) {
         throw new RangeError(`Dataset ${index} borderWidth must be a finite, nonnegative number.`);
@@ -116,7 +116,7 @@ function normalizeDataset(dataset, index, labelCount, type) {
         throw new RangeError(`Dataset ${index} fillOpacity must be between zero and one.`);
     }
 
-    const circular = ['pie', 'donut'].includes(type);
+    const circular = ['pie', 'donut', 'polarArea'].includes(type);
     const defaultColor = defaultColors[index % defaultColors.length];
     const backgroundColor = dataset.backgroundColor ?? (circular ? defaultColors : defaultColor);
     const borderColor = dataset.borderColor ?? (circular ? '#ffffff' : defaultColor);
@@ -136,9 +136,10 @@ function normalizeDataset(dataset, index, labelCount, type) {
  * Validates chart data and copies its labels, values, and colors.
  * @param {ChartData} data The supplied chart data.
  * @param {string} type The chart type.
+ * @param {boolean} [stacked=false] Whether bar values will be summed.
  * @returns {ChartData} The independent, normalized chart data.
  */
-export function normalizeData(data, type) {
+export function normalizeData(data, type, stacked = false) {
     if (!data || !Array.isArray(data.datasets)) {
         throw new TypeError('Chart data requires a datasets array.');
     }
@@ -153,6 +154,27 @@ export function normalizeData(data, type) {
     const datasets = Array.from(data.datasets, (dataset, index) => {
         return normalizeDataset(dataset, index, labels.length, type);
     });
+
+    if (type === 'bar' && stacked) {
+        for (let index = 0; index < labels.length; index++) {
+            let positive = 0;
+            let negative = 0;
+
+            for (const dataset of datasets) {
+                const value = dataset.data[index];
+
+                if (value < 0) {
+                    negative += value;
+                } else {
+                    positive += value;
+                }
+            }
+
+            if (!Number.isFinite(positive) || !Number.isFinite(negative)) {
+                throw new RangeError('Stack totals must be finite numbers.');
+            }
+        }
+    }
 
     return { labels, datasets };
 }

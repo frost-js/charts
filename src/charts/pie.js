@@ -28,7 +28,7 @@ export default class PieChart extends Layer {
 
             for (const [index, value] of dataset.data.entries()) {
                 slices.push({
-                    angle: total ? value / largest / total * Math.PI * 2 : 0,
+                    angle: total && this.chart.isDataVisible(datasetIndex, index) ? value / largest / total * Math.PI * 2 : 0,
                     backgroundColor: getColor(dataset, 'backgroundColor', index),
                     borderColor: getColor(dataset, 'borderColor', index),
                     borderWidth: dataset.borderWidth,
@@ -113,7 +113,13 @@ export default class PieChart extends Layer {
                 }
 
                 if (target && target.angle) {
-                    this.addHitRegion(path, target);
+                    const anchorRadius = (innerRadius + radius) / 2;
+
+                    this.addHitRegion(path, {
+                        ...target,
+                        anchorX: x + Math.cos(middle) * anchorRadius,
+                        anchorY: y + Math.sin(middle) * anchorRadius,
+                    });
                 }
 
                 start += angle;

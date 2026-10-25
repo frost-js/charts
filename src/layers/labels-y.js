@@ -10,6 +10,7 @@ import Layer from './layer.js';
  * Lays out and renders numeric labels beside the plot.
  */
 export default class LabelsY extends Layer {
+    #categorical;
     #gridHeight;
     #labels;
     #metrics;
@@ -34,7 +35,10 @@ export default class LabelsY extends Layer {
 
         updateFont(this.context, this.settings.font);
 
-        this.#values = this.chart.getScale();
+        const { type, orientation } = this.chart.options;
+
+        this.#categorical = type === 'bar' && orientation === 'horizontal';
+        this.#values = this.#categorical ? this.chart.getLabels() : this.chart.getScale();
         this.#labels = this.#values.map((value, index) => {
             const formatted = this.settings.callback ? this.settings.callback(value, index) : value;
 
@@ -54,7 +58,7 @@ export default class LabelsY extends Layer {
         this.rect.y = chartRect.top;
         this.rect.height = chartRect.height;
 
-        this.#gridHeight = this.rect.height / (this.#labels.length - 1);
+        this.#gridHeight = this.rect.height / Math.max(1, this.#labels.length - 1);
     }
 
     /**
@@ -86,7 +90,9 @@ export default class LabelsY extends Layer {
             const { fontBoundingBoxAscent: ascent, fontBoundingBoxDescent: descent } = this.#metrics[i];
 
             const labelX = this.rect.width - this.settings.padding;
-            const position = getScalePosition(this.#values[i], this.#values[0], this.#values.at(-1));
+            const position = this.#categorical ?
+                1 - (i + .5) / this.#values.length :
+                getScalePosition(this.#values[i], this.#values[0], this.#values.at(-1));
             const offset = this.rect.y - this.canvasRect.y;
             const labelY = (1 - position) * this.rect.height + offset + (ascent - descent) / 2;
 
