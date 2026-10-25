@@ -1,8 +1,8 @@
 const data = {
     labels: ['Speed', 'Quality', 'Reliability', 'Support', 'Coverage', 'Value'],
     datasets: [
-        { label: 'Team A', data: [85, 70, 90, 65, 75, 80], borderWidth: 2, pointRadius: 3 },
-        { label: 'Team B', data: [65, 90, 75, 85, 60, 95], borderWidth: 2, pointRadius: 3 },
+        { label: 'Team A', data: [90, 35, 75, 20, 55, 85], borderWidth: 2, pointRadius: 3 },
+        { label: 'Team B', data: [30, 85, 45, 95, 70, 25], borderWidth: 2, pointRadius: 3 },
     ],
 };
 const chart = new Chart(document.getElementById('chart'), {
