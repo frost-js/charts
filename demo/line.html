@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frost Chart</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/elusivecodes/frostui/dist/frost-ui.css">
+    <script src="https://cdn.jsdelivr.net/gh/elusivecodes/frostui@1.4.6/dist/frost-ui-bundle.js"></script>
+    <script src="../dist/frost-chart.js"></script>
+</head>
+
+<body>
+    <div id="chart"></div>
+    <script>
+        const chart = document.getElementById('chart');
+
+        new Chart(chart, {
+            type: 'line',
+            data: {
+                labels: ['A', 'B', 'C', 'D', 'E'],
+                datasets: [
+                    {
+                        label: 'D1',
+                        data: [20, 5, 50, 90, 13],
+                        borderColor: 'blue'
+                    },
+                    {
+                        label: 'D2',
+                        data: [24, 81, 33, 7, 0],
+                        borderColor: 'red'
+                    }
+                ]
+            }
+        });
+    </script>
+</body>
+
+</html>

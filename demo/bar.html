@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frost Chart</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/elusivecodes/frostui/dist/frost-ui.css">
+    <script src="https://cdn.jsdelivr.net/gh/elusivecodes/frostui@1.4.6/dist/frost-ui-bundle.js"></script>
+    <script src="../dist/frost-chart.js"></script>
+</head>
+
+<body>
+    <div id="chart" style="height: 500px;"></div>
+    <script>
+        const chart = document.getElementById('chart');
+
+        new Chart(chart, {
+            type: 'bar',
+            title: {
+                text: 'This is a really long title for the chart, and it extends beyond the maximum width of the available chart area',
+                position: 'top'
+            },
+            legend: {
+                position: 'right',
+                align: 'center',
+                // maxHeight: 20,
+                labels: {
+                    textAlign: 'start'
+                }
+            },
+            data: {
+                labels: ['A', 'B', 'C', 'D', 'E'],
+                datasets: [
+                    {
+                        label: 'Dataset 1',
+                        data: [20, 25, 250, 90, 33],
+                        borderColor: 'blue',
+                        backgroundColor: 'rgba(0,0,255,.75)'
+                    },
+                    {
+                        label: 'Dataset 2',
+                        data: [24, -80, 33, 67, 23],
+                        borderColor: 'red',
+                        backgroundColor: 'rgba(255,0,0,.75)'
+                    },
+                    {
+                        label: 'Dataset 3',
+                        data: [91, 15, -8, 32, 151],
+                        borderColor: 'green',
+                        backgroundColor: 'rgba(0,255,0,.75)'
+                    },
+                    {
+                        label: 'Dataset 456',
+                        data: [44, 3, 12, 125, 16],
+                        borderColor: 'purple',
+                        backgroundColor: 'rgba(127,0,127,.75)'
+                    }
+                ]
+            }
+        });
+    </script>
+</body>
+
+</html>
