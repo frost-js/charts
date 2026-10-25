@@ -20,7 +20,7 @@ export default class Grid extends Layer {
      */
     calculate(chartRect, next) {
         this.rect = chartRect.clone();
-        this.#labelsX = this.chart.getLabels();
+        this.#labelsX = this.chart.options.type === 'scatter' ? this.chart.getScale('x') : this.chart.getLabels();
         this.#labelsY = this.chart.getScale();
 
         const tickX = Math.min(chartRect.height, this.#tickLength('x'));
@@ -196,6 +196,12 @@ export default class Grid extends Layer {
     #x(index) {
         const count = this.#labelsX.length;
         const rect = this.#plotRect;
+
+        if (this.chart.options.type === 'scatter') {
+            const position = getScalePosition(this.#labelsX[index], this.#labelsX[0], this.#labelsX.at(-1));
+
+            return rect.left + position * rect.width;
+        }
 
         if (this.chart.options.type === 'bar') {
             return rect.left + (index + .5) * rect.width / Math.max(1, count);

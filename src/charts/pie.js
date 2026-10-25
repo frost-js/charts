@@ -2,7 +2,7 @@ import { getColor } from '../data.js';
 import Layer from '../layers/layer.js';
 
 /**
- * Renders the original combined pie using all dataset values.
+ * Renders a combined pie or donut using all dataset values.
  */
 export default class PieChart extends Layer {
     #oldSlices = [];
@@ -53,6 +53,8 @@ export default class PieChart extends Layer {
 
         const spacing = Math.min(5, this.rect.width / 4, this.rect.height / 4);
         const radius = Math.max(0, Math.min(this.rect.width, this.rect.height) / 2 - spacing);
+        const cutout = this.chart.options.type === 'donut' ? this.chart.options.cutout : 0;
+        const innerRadius = radius * cutout;
         const datasetCount = Math.max(this.#slices.length, this.#oldSlices.length);
         let start = 0;
 
@@ -86,8 +88,14 @@ export default class PieChart extends Layer {
                 const y = this.rect.height / 2 + Math.sin(middle) * spacing;
                 const path = new Path2D();
 
-                path.moveTo(x, y);
                 path.arc(x, y, radius, start, start + angle);
+
+                if (innerRadius) {
+                    path.arc(x, y, innerRadius, start + angle, start, true);
+                } else {
+                    path.lineTo(x, y);
+                }
+
                 path.closePath();
 
                 this.context.fillStyle = next.backgroundColor;

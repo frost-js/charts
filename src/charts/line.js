@@ -3,7 +3,7 @@ import Layer from '../layers/layer.js';
 import { getScalePosition } from '../scale.js';
 
 /**
- * Renders connected data points on the Cartesian axes.
+ * Renders line, area, and scatter series on the Cartesian axes.
  */
 export default class LineChart extends Layer {
     #baseY = 0;
@@ -32,9 +32,12 @@ export default class LineChart extends Layer {
      * Calculates target points and retains the visible positions for transitions.
      */
     data() {
+        const scatter = this.chart.options.type === 'scatter';
         const labels = this.chart.getLabels();
         const datasets = this.chart.getData();
 
+        const minX = this.chart.getScaleMin('x');
+        const maxX = this.chart.getScaleMax('x');
         const min = this.chart.getScaleMin();
         const max = this.chart.getScaleMax();
         const step = labels.length > 1 ? this.rect.width / (labels.length - 1) : 0;
@@ -47,14 +50,22 @@ export default class LineChart extends Layer {
             const points = [];
 
             for (const [index, value] of dataset.data.entries()) {
+                let x = labels.length === 1 ? this.rect.width / 2 : index * step;
+
+                if (scatter) {
+                    x = this.rect.width * getScalePosition(value.x, minX, maxX);
+                }
+                const yValue = scatter ? value.y : value;
+
                 points.push({
-                    x: labels.length === 1 ? this.rect.width / 2 : index * step,
-                    y: this.rect.height * (1 - getScalePosition(value, min, max)),
+                    x,
+                    y: this.rect.height * (1 - getScalePosition(yValue, min, max)),
                     backgroundColor: getColor(dataset, 'backgroundColor', index),
                     borderColor: getColor(dataset, 'borderColor', index),
                     borderWidth: dataset.borderWidth,
                     pointRadius: dataset.pointRadius,
-                    label: labels[index],
+                    fillOpacity: dataset.fillOpacity,
+                    label: labels[index] ?? `Point ${index + 1}`,
                     datasetLabel: dataset.label,
                     datasetIndex,
                     index,
@@ -73,8 +84,7 @@ export default class LineChart extends Layer {
     render(progress = 1) {
         super.render();
 
-        const offsetX = this.rect.x - this.canvasRect.x;
-        const offsetY = this.rect.y - this.canvasRect.y;
+        const type = this.chart.options.type;
         const datasetCount = Math.max(this.#points.length, this.#oldPoints.length);
 
         this.#renderedPoints = [];
@@ -84,55 +94,112 @@ export default class LineChart extends Layer {
             const oldPoints = this.#oldPoints[datasetIndex] || [];
             const count = Math.max(targets.length, oldPoints.length);
             const rendered = [];
-            let previous = null;
 
             for (let index = 0; index < count; index++) {
                 const target = targets[index];
                 const old = oldPoints[index];
-                const next = target || { ...old, y: this.#baseY, pointRadius: 0 };
-                const start = old || { ...next, y: this.#baseY, pointRadius: 0 };
-
-                const x = start.x + (next.x - start.x) * progress;
-                const y = start.y + (next.y - start.y) * progress;
-                const radius = start.pointRadius + (next.pointRadius - start.pointRadius) * progress;
 
                 if (!target && progress === 1) {
                     continue;
                 }
 
-                rendered.push({ ...next, x, y, pointRadius: radius });
+                const next = target || { ...old, y: this.#baseY, pointRadius: 0 };
+                const start = old || { ...next, y: this.#baseY, pointRadius: 0 };
 
-                const point = new Path2D();
-                const hit = new Path2D();
-
-                this.context.strokeStyle = next.borderColor;
-                this.context.fillStyle = next.backgroundColor;
-
-                if (previous && next.borderWidth) {
-                    this.context.beginPath();
-                    this.context.moveTo(previous.x + offsetX, previous.y + offsetY);
-                    this.context.lineTo(x + offsetX, y + offsetY);
-                    this.context.lineWidth = next.borderWidth;
-                    this.context.stroke();
-                }
-
-                point.arc(x + offsetX, y + offsetY, radius, 0, Math.PI * 2);
-                this.context.fill(point);
-
-                if (next.borderWidth) {
-                    this.context.lineWidth = next.borderWidth;
-                    this.context.stroke(point);
-                }
-
-                if (target) {
-                    hit.arc(x + offsetX, y + offsetY, Math.max(6, radius), 0, Math.PI * 2);
-                    this.addHitRegion(hit, target);
-                }
-
-                previous = { x, y };
+                rendered.push({
+                    ...next,
+                    x: start.x + (next.x - start.x) * progress,
+                    y: start.y + (next.y - start.y) * progress,
+                    pointRadius: start.pointRadius + (next.pointRadius - start.pointRadius) * progress,
+                    interactive: Boolean(target),
+                });
             }
 
             this.#renderedPoints.push(rendered);
+        }
+
+        // Paint all fills first so a later area cannot cover another series' points.
+        if (type === 'area') {
+            for (const points of this.#renderedPoints) {
+                this.#fillArea(points);
+            }
+        }
+
+        for (const points of this.#renderedPoints) {
+            this.#renderSeries(points, type !== 'scatter');
+        }
+    }
+
+    /**
+     * Fills the area between a series and the current zero baseline.
+     * @param {object[]} points The interpolated points.
+     */
+    #fillArea(points) {
+        if (points.length < 2) {
+            return;
+        }
+
+        const offsetX = this.rect.x - this.canvasRect.x;
+        const offsetY = this.rect.y - this.canvasRect.y;
+        const path = new Path2D();
+
+        path.moveTo(points[0].x + offsetX, this.#baseY + offsetY);
+
+        for (const point of points) {
+            path.lineTo(point.x + offsetX, point.y + offsetY);
+        }
+
+        path.lineTo(points.at(-1).x + offsetX, this.#baseY + offsetY);
+        path.closePath();
+
+        this.context.save();
+        this.context.globalAlpha = points[0].fillOpacity;
+        this.context.fillStyle = points[0].backgroundColor;
+        this.context.fill(path);
+        this.context.restore();
+    }
+
+    /**
+     * Draws visible points and optional connecting segments.
+     * @param {object[]} points The interpolated points.
+     * @param {boolean} connected Whether to connect successive points.
+     */
+    #renderSeries(points, connected) {
+        const offsetX = this.rect.x - this.canvasRect.x;
+        const offsetY = this.rect.y - this.canvasRect.y;
+        let previous = null;
+
+        for (const item of points) {
+            const x = item.x + offsetX;
+            const y = item.y + offsetY;
+            const point = new Path2D();
+            const hit = new Path2D();
+
+            this.context.strokeStyle = item.borderColor;
+            this.context.fillStyle = item.backgroundColor;
+
+            if (connected && previous && item.borderWidth) {
+                this.context.beginPath();
+                this.context.moveTo(previous.x, previous.y);
+                this.context.lineTo(x, y);
+                this.context.lineWidth = item.borderWidth;
+                this.context.stroke();
+            }
+
+            point.arc(x, y, item.pointRadius, 0, Math.PI * 2);
+            this.context.fill(point);
+
+            if (item.borderWidth) {
+                this.context.lineWidth = item.borderWidth;
+                this.context.stroke(point);
+            }
+
+            if (item.interactive) {
+                hit.arc(x, y, Math.max(6, item.pointRadius), 0, Math.PI * 2);
+                this.addHitRegion(hit, item);
+            }
+
+            previous = { x, y };
         }
     }
 }

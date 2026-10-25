@@ -1,0 +1,23 @@
+.demo-sidebar {
+    padding: 1.5rem;
+}
+
+.demo-main {
+    padding-inline: 1.5rem;
+}
+
+@media (min-width: 992px) {
+    .demo-sidebar {
+        position: fixed;
+        inset-block: 0;
+        inset-inline-start: 0;
+        width: 16rem;
+        overflow-y: auto;
+    }
+
+    .demo-main {
+        width: calc(100% - 16rem);
+        margin-inline-start: 16rem;
+        padding-inline: 2.5rem;
+    }
+}

@@ -1,6 +1,6 @@
 # Frost Charts
 
-Standalone canvas bar, line, and pie charts with no runtime dependencies. Charts support titles, legends, configurable axes, animated updates, pointer tooltips, responsive sizing, and high-DPI rendering.
+Standalone canvas bar, line, area, pie, donut, and scatter charts with no runtime dependencies. Charts support titles, legends, configurable axes, animated updates, pointer tooltips, responsive sizing, and high-DPI rendering.
 
 ## Installation
 
@@ -57,7 +57,9 @@ A named `Chart` export is also available. The UMD bundles expose `window.Chart` 
 
 ## Data
 
-Every dataset must have one finite numeric value per label. Bar and line charts accept negative values. Pie charts reject negative values; all datasets contribute slices to one combined pie, as in the original implementation. Empty datasets and zero-valued pies render without errors.
+Bar, line, area, pie, and donut datasets must have one finite numeric value per label. Bar, line, and area charts accept negative values. Pie and donut charts reject negative values; all datasets contribute slices to one combined circle. Empty datasets and zero-valued circular charts render without errors.
+
+Scatter datasets accept finite `{ x, y }` points. Labels are optional, datasets may have different lengths, and both axes use numeric scales. Points are drawn without connecting lines.
 
 | Dataset option | Description |
 | --- | --- |
@@ -66,17 +68,21 @@ Every dataset must have one finite numeric value per label. Bar and line charts 
 | `backgroundColor` | One CSS color or a repeating array of colors. |
 | `borderColor` | One CSS color or a repeating array of colors. |
 | `borderWidth` | Nonnegative border width; defaults to `1`. Set `0` to omit borders. |
-| `pointRadius` | Line point radius; defaults to `2`. |
+| `pointRadius` | Line/area point radius; defaults to `2`, or `4` for scatter. |
+| `fillOpacity` | Area fill opacity from `0` to `1`; defaults to `.2`. The fill uses the first background color in the dataset. |
+
+The default palette contains twelve colors. Cartesian series receive one color per dataset; pie and donut slices cycle through the palette. Explicit dataset colors override the defaults.
 
 Inputs and getter results are copied. Changing the original data object does not change a chart; call `setData` to apply an update. Invalid data or settings are rejected before replacing the current state.
 
 ## Options
 
-The original option groups remain available. See `Chart.defaults` in [src/chart.js](src/chart.js) for the complete defaults.
+The original option groups remain available. Area and scatter reuse the line renderer; donut reuses the pie renderer. See `Chart.defaults` in [src/chart.js](src/chart.js) for the complete defaults.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `type` | `'bar'` | `'bar'`, `'line'`, or `'pie'`. |
+| `type` | `'bar'` | `'bar'`, `'line'`, `'area'`, `'pie'`, `'donut'`, or `'scatter'`. |
+| `cutout` | `.6` | Donut inner radius as a fraction of the outer radius, from `0` up to but excluding `1`. |
 | `title.display` | `true` | Displays the chart title. |
 | `title.text` | `'Title'` | Title text, wrapped to the available space. |
 | `title.position` | `'top'` | `'top'`, `'right'`, `'bottom'`, or `'left'`. |
@@ -86,15 +92,17 @@ The original option groups remain available. See `Chart.defaults` in [src/chart.
 | `legend.align` | `'center'` | `'start'`, `'center'`, or `'end'`. |
 | `legend.maxWidth`, `legend.maxHeight` | `null` | Optional limits in CSS pixels. Items that cannot fit are omitted. |
 | `font` | 12px Helvetica/Arial | Base font inherited by titles, legends, ticks, and tooltips. |
-| `scales.x`, `scales.y` | Visible | Each axis has `display`, `grid`, and `ticks` settings. Ignored for pies. |
+| `scales.x`, `scales.y` | Visible | Each axis has `display`, `grid`, and `ticks` settings. Ignored for pies and donuts. |
 | `layout.padding` | `20` | Outer padding in CSS pixels. |
-| `animation.duration` | `500` | Animation duration for all chart types in milliseconds. Set `0` to disable; reduced-motion preferences disable it automatically. |
+| `animation.duration` | `300` | Animation duration for all chart types in milliseconds. Set `0` to disable; reduced-motion preferences disable it automatically. |
+| `animation.easing` | `'easeOutQuad'` | `'linear'`, `'easeOutQuad'`, or `'easeInOutQuad'`. |
+| `tooltip.position` | `'cursor'` | Follow the cursor, or use `'fixed'` for the upper-right corner of the chart. |
 | `tooltip.display` | `true` | Shows a canvas tooltip for the hovered mark. |
 | `tooltip.padding` | `8` | Tooltip padding in CSS pixels. |
 | `responsive` | `true` | Observes container resizing. |
 | `ariaLabel` | `'Chart'` | Prefix for the accessible description containing labels and values. |
 
-Bars and line points animate from the zero baseline on first render. Pie slices sweep into view. Data updates interpolate to the new geometry; line and pie updates interrupted mid-animation continue from their visible positions. Set `animation.duration` to `0` to render immediately.
+Bars and Cartesian points animate from the zero baseline on first render. Pie and donut slices sweep into view. Data updates interpolate to the new geometry; line, area, scatter, pie, and donut updates interrupted mid-animation continue from their visible positions. Set `animation.duration` to `0` to render immediately.
 
 Each `font` object accepts `family`, `size`, `weight`, `style`, and `lineHeight`. Layer fonts inherit from the base font. Grid options include `display`, `drawBorder`, `borderColor`, `borderWidth`, `lineColor`, `lineWidth`, and `tickLength`. Tick options include `display`, `drawTicks`, `padding`, `font`, `color`, and `callback(value, index)`.
 
@@ -110,6 +118,36 @@ chart.setSettings({
 });
 ```
 
+## Chart variants
+
+An area chart uses the same labeled data as a line chart:
+
+```js
+chart.setSettings({ type: 'area' });
+```
+
+A donut uses the same nonnegative data as a pie:
+
+```js
+chart.setSettings({ type: 'donut', cutout: .65 });
+```
+
+Scatter accepts numeric coordinates instead of category values:
+
+```js
+const chart = new Chart(node, {
+    type: 'scatter',
+    data: {
+        datasets: [
+            {
+                label: 'Observations',
+                data: [{ x: 1, y: 3 }, { x: 4, y: 8 }, { x: 10, y: 6 }],
+            },
+        ],
+    },
+});
+```
+
 ## Methods
 
 | Method | Behavior |
@@ -118,8 +156,8 @@ chart.setSettings({
 | `setSettings(options)` | Merges settings, rebuilds the layers, and redraws. Can change chart type and data together. |
 | `getData()` | Returns the normalized datasets. |
 | `getLabels()` | Returns the category labels. |
-| `getValues()` | Returns values from all datasets. |
-| `getScale()`, `getScaleMin()`, `getScaleMax()` | Return the current numeric scale or its boundaries. |
+| `getValues(axis = 'y')` | Returns values from all datasets; scatter supports `'x'` or `'y'`. |
+| `getScale(axis = 'y')`, `getScaleMin(axis = 'y')`, `getScaleMax(axis = 'y')` | Return the numeric scale or its boundaries. Use `'x'` for the scatter x-axis. |
 | `update()` | Recalculates layout and data and starts the configured animation. |
 | `calculate()` | Recalculates layer bounds and data geometry. |
 | `render()` | Renders all layers at their final positions immediately. |
@@ -143,7 +181,7 @@ npm pack --dry-run
 
 `npm test` builds and tests Chromium, Firefox, and WebKit. `npm run test:browser -- --project=chromium` runs one browser against existing bundles. Coverage uses Chromium and reports source coverage in `coverage/`.
 
-Open `demo/index.html` directly in a browser, or serve the repository with your preferred static server. The demos load the Frost UI 4 stylesheet from jsDelivr for presentation and the standalone chart bundle from `dist/`; no installed dependencies are needed to view them. Frost UI JavaScript and query are not used. Generated ESM and UMD bundles, minified variants, and source maps are tracked in `dist/`, matching the sibling projects.
+Open `demo/index.html` directly in a browser, or serve the repository with your preferred static server. The demos load the Frost UI 4 stylesheet from jsDelivr for presentation and the standalone chart bundle from `dist/`; no installed dependencies are needed to view them. Frost UI JavaScript and query are not used. The sidebar links to chart types, legend placements, and tooltip examples. Canvas colors are explicit chart settings; the demos do not include theme synchronization. Generated ESM and UMD bundles, minified variants, and source maps are tracked in `dist/`, matching the sibling projects.
 
 Chart renderers live in `src/charts/`; shared visual layers live in `src/layers/`. The public entry point and `Chart` class aliases remain unchanged.
 
@@ -153,7 +191,7 @@ Keep using `new Chart(...)` in browser scripts, and load `frost-charts.js` inste
 
 If using the earlier completion baseline, replace `new UI.Chart(...)` or `fQuery(...).chart()` with `new Chart(...)` or `Chart.init(...)`. Charts no longer inherit from UI.BaseComponent or use UI data attributes; supply options directly and call `dispose()` before removing the container.
 
-The original layer responsibilities and `Chart.Bar`, `Chart.Line`, `Chart.Pie`, `Chart.Grid`, `Chart.Layer`, `Chart.Legend`, `Chart.Rect`, `Chart.Title`, and `Chart.Tooltip` class aliases remain. Internal underscore fields and methods are now private; direct access to prototype internals is unsupported.
+The additional `Chart.Area`, `Chart.Donut`, and `Chart.Scatter` aliases expose the shared variant renderers. The original layer responsibilities and `Chart.Bar`, `Chart.Line`, `Chart.Pie`, `Chart.Grid`, `Chart.Layer`, `Chart.Legend`, `Chart.Rect`, `Chart.Title`, and `Chart.Tooltip` class aliases remain. Internal underscore fields and methods are now private; direct access to prototype internals is unsupported.
 
 The initial prototype is preserved in commit `a0b4404`. The completion scope is recorded in [PROPOSAL.md](PROPOSAL.md).
 

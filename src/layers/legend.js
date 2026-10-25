@@ -44,7 +44,7 @@ export default class Legend extends Layer {
 
         let datasets = this.chart.getData();
 
-        if (this.chart.options.type === 'pie') {
+        if (['pie', 'donut'].includes(this.chart.options.type)) {
             const labels = this.chart.getLabels();
 
             datasets = datasets.flatMap((dataset) => {

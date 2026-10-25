@@ -1,6 +1,6 @@
 # Frost Charts completion proposal
 
-Complete this canvas library as a standalone FrostJS package with bar, line, and pie chart features and no runtime dependencies. Preserve the original work in the initial Git commit, then replace the concatenated global scripts with explicit ES modules and test the resulting public API in real browsers.
+Complete this canvas library as a standalone FrostJS package with bar, line, area, pie, donut, and scatter chart features and no runtime dependencies. Preserve the original work in the initial Git commit, then replace the concatenated global scripts with explicit ES modules and test the resulting public API in real browsers.
 
 ## Package conventions
 
@@ -14,12 +14,12 @@ Retain the original `Chart`, `Layer`, title, legend, axis-label, grid, bar, line
 
 ## Functional scope
 
-- Complete grouped bars, line series with points, and colored pie slices. Preserve the original combined pie when multiple datasets are supplied.
+- Complete grouped bars, line and area series, numeric scatter plots, and colored pie and donut slices. Preserve the original combined pie when multiple datasets are supplied.
 - Retain the existing `{ labels, datasets }` input and title, legend, font, layout, and scale option groups. Validate data before changing a live chart; copy inputs and returned data to avoid accidental mutation.
 - Make empty, zero, constant, negative Cartesian, single-label, and narrow-container data safe. Reject negative pie values and nonfinite values with useful errors. Recalculate scales after every update and resize.
 - Finish title wrapping and placement, legend placement and wrapping, tick formatting, grid visibility, dataset colors, and borders.
 - Replace accumulating hover callbacks with current-frame geometry. Support canvas-local pointer coordinates, hover highlighting, the unfinished canvas tooltip layer, and accessible canvas descriptions.
-- Animate bars, line points, and pie angles using elapsed time, respect reduced motion, and cancel superseded frames. Resize with the container and device pixel ratio. Dispose observers, events, animation frames, generated DOM, and registered chart state.
+- Animate bars, Cartesian points, and circular slices using elapsed time and configurable easing, respect reduced motion, and cancel superseded frames. Resize with the container and device pixel ratio. Dispose observers, events, animation frames, generated DOM, and registered chart state.
 - Support `setData`, `setSettings`, `getData`, `getLabels`, `getValues`, scale getters, `update`, `render`, `draw`, `resize`, and `dispose`; retain `calculate` and `run` as compatibility methods. Keep the original layer classes and static class aliases, with private internal fields and explicit shared layer interfaces.
 
 ## Existing defects to resolve
@@ -30,4 +30,4 @@ The current line and pie paths call a missing `data` method. `setData` ignores i
 
 Run shared lint, build all four bundles, and validate package contents. Exercise actual canvas rendering, public data/settings updates, invalid-input rollback, scale boundaries, colors, layout, tooltip hit testing after scroll and CSS scaling, animation cancellation, high-DPI sizing, resize, and disposal in Chromium, Firefox, and WebKit. Add coverage reporting and CI using the sibling workflows as references. Use the Frost UI stylesheet from the CDN for demo presentation, following the sibling projects. Run chart behavior tests without UI or query, and omit separate demo and bundle test suites.
 
-Publishing, remote repository changes, new chart families, stacking, zooming, and a general plugin API are outside this completion pass.
+Publishing, remote repository changes, stacking, zooming, and a general plugin API are outside this completion pass.

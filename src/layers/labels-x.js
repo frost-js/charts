@@ -3,16 +3,18 @@
  */
 
 import { measureText, updateFont } from '../helpers.js';
+import { getScalePosition } from '../scale.js';
 import Layer from './layer.js';
 
 /**
- * Lays out and renders category labels below the plot.
+ * Lays out category labels or numeric scatter ticks below the plot.
  */
 export default class LabelsX extends Layer {
     #gridWidth;
     #labels;
     #metrics;
     #offset;
+    #values;
 
     /**
      * Calculates the layer bounds before continuing layout.
@@ -33,7 +35,8 @@ export default class LabelsX extends Layer {
 
         updateFont(this.context, this.settings.font);
 
-        this.#labels = this.chart.getLabels().map((value, index) => {
+        this.#values = this.chart.options.type === 'scatter' ? this.chart.getScale('x') : this.chart.getLabels();
+        this.#labels = this.#values.map((value, index) => {
             const formatted = this.settings.callback ? this.settings.callback(value, index) : value;
 
             return String(formatted);
@@ -58,6 +61,8 @@ export default class LabelsX extends Layer {
                 this.#offset = this.#gridWidth / 2;
                 break;
             case 'line':
+            case 'area':
+            case 'scatter':
                 this.#gridWidth = this.#labels.length > 1 ? chartRect.width / (this.#labels.length - 1) : 0;
                 this.#offset = this.#labels.length === 1 ? chartRect.width / 2 : 0;
                 break;
@@ -95,7 +100,15 @@ export default class LabelsX extends Layer {
         for (const [i, value] of this.#labels.entries()) {
             const { fontBoundingBoxAscent: ascent, width } = this.#metrics[i];
 
-            const labelX = (i * this.#gridWidth) + (this.#gridWidth / 2) - (width / 2) + this.#offset;
+            let position = i * this.#gridWidth + this.#offset;
+
+            if (this.chart.options.type === 'scatter') {
+                const fraction = getScalePosition(this.#values[i], this.#values[0], this.#values.at(-1));
+
+                position = fraction * this.rect.width;
+            }
+
+            const labelX = position + this.#gridWidth / 2 - width / 2;
             const labelY = ascent + this.settings.padding;
 
             this.context.fillText(value, labelX, labelY);

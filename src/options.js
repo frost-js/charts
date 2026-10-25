@@ -111,8 +111,8 @@ function validateAxis(axis, font, name) {
  * @returns {object} The validated options with resolved fonts.
  */
 export function normalizeOptions(options) {
-    if (!['bar', 'line', 'pie'].includes(options.type)) {
-        throw new TypeError('Chart type must be bar, line, or pie.');
+    if (!['bar', 'line', 'area', 'pie', 'donut', 'scatter'].includes(options.type)) {
+        throw new TypeError('Chart type must be bar, line, area, pie, donut, or scatter.');
     }
 
     if (!options.font || !options.title || !options.legend?.labels || !options.tooltip) {
@@ -122,6 +122,18 @@ export function normalizeOptions(options) {
     validateFont(options.font, 'font');
     validateDimension(options.layout?.padding, 'layout.padding');
     validateDimension(options.animation?.duration, 'animation.duration');
+
+    if (!['linear', 'easeOutQuad', 'easeInOutQuad'].includes(options.animation.easing)) {
+        throw new TypeError('Animation easing must be linear, easeOutQuad, or easeInOutQuad.');
+    }
+
+    if (!Number.isFinite(options.cutout) || options.cutout < 0 || options.cutout >= 1) {
+        throw new RangeError('Donut cutout must be at least zero and less than one.');
+    }
+
+    if (!['cursor', 'fixed'].includes(options.tooltip.position)) {
+        throw new TypeError('Tooltip position must be cursor or fixed.');
+    }
 
     validatePosition(options.title, 'title');
     validateDimension(options.title.padding, 'title.padding');

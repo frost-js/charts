@@ -1,6 +1,6 @@
 import { expect, test } from '#test';
 
-for (const type of ['line', 'pie']) {
+for (const type of ['line', 'pie', 'area', 'donut']) {
     test(`${type} animates initial geometry, updates, and interrupted transitions`, async ({ page }) => {
         await page.emulateMedia({ reducedMotion: 'no-preference' });
         await page.clock.install();
@@ -9,7 +9,7 @@ for (const type of ['line', 'pie']) {
         await page.evaluate((chartType) => {
             window.makeChart({
                 type: chartType,
-                animation: { duration: 1000 },
+                animation: { duration: 1000, easing: 'linear' },
                 data: {
                     labels: ['A', 'B'],
                     datasets: [{ data: [10, 20], borderWidth: 0, pointRadius: 6 }],
@@ -75,7 +75,7 @@ for (const type of ['line', 'pie']) {
                 return draw.call(this);
             };
 
-            window.makeChart({ type: chartType, animation: { duration: 1000 } });
+            window.makeChart({ type: chartType, animation: { duration: 1000, easing: 'linear' } });
         }, type);
 
         await page.clock.runFor(250);
@@ -136,7 +136,7 @@ test('line hit regions follow moving points', async ({ page }) => {
     await page.evaluate(() => {
         window.makeChart({
             type: 'line',
-            animation: { duration: 1000 },
+            animation: { duration: 1000, easing: 'linear' },
             data: {
                 labels: ['Moving'],
                 datasets: [{ label: 'Sales', data: [10], backgroundColor: '#ff0000', borderWidth: 0, pointRadius: 8 }],
@@ -178,7 +178,7 @@ test('pie hover preserves the current sweep and cannot hit unrevealed slices', a
     await page.evaluate(() => {
         window.makeChart({
             type: 'pie',
-            animation: { duration: 1000 },
+            animation: { duration: 1000, easing: 'linear' },
             data: {
                 labels: ['Slice'],
                 datasets: [{ label: 'Sales', data: [10], backgroundColor: '#ff0000', borderWidth: 0 }],
@@ -206,4 +206,76 @@ test('pie hover preserves the current sweep and cannot hit unrevealed slices', a
     await page.clock.runFor(600);
     await page.mouse.move(bounds.x + 301, bounds.y + 80);
     await expect(canvas).toHaveAttribute('aria-description', 'Slice. Sales: 10');
+});
+
+test('ease-out moves points sooner than linear timing and defaults finish in 300ms', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
+
+    const positions = {};
+
+    for (const easing of ['linear', 'easeOutQuad', 'easeInOutQuad']) {
+        await page.evaluate((curve) => {
+            window.makeChart({
+                type: 'line',
+                animation: { duration: 1000, easing: curve },
+                data: {
+                    labels: ['A'],
+                    datasets: [{ data: [10], backgroundColor: '#ff0000', borderWidth: 0, pointRadius: 12 }],
+                },
+            });
+        }, easing);
+        await page.clock.runFor(250);
+
+        positions[easing] = await page.locator('canvas').evaluate((node) => {
+            const pixels = node.getContext('2d').getImageData(300, 0, 1, node.height).data;
+            const rows = [];
+
+            for (let y = 0; y < node.height; y++) {
+                if (pixels[y * 4 + 3]) {
+                    rows.push(y);
+                }
+            }
+
+            return (rows[0] + rows.at(-1)) / 2;
+        });
+    }
+
+    expect(positions.easeOutQuad).toBeLessThan(positions.linear - 40);
+    expect(positions.easeInOutQuad).toBeGreaterThan(positions.linear + 20);
+
+    await page.evaluate(() => window.makeChart({ type: 'line', animation: Chart.defaults.animation }));
+    await page.clock.runFor(350);
+
+    const completed = await page.locator('canvas').evaluate((node) => node.toDataURL());
+
+    await page.evaluate(() => window.chart.render());
+    expect(await page.locator('canvas').evaluate((node) => node.toDataURL())).toBe(completed);
+});
+
+test('scatter transitions interpolate numeric coordinates', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
+    await page.evaluate(() => {
+        window.makeChart({
+            type: 'scatter',
+            data: { datasets: [{ data: [{ x: 2, y: 2 }, { x: 10, y: 10 }] }] },
+        });
+        window.chart.setSettings({ animation: { duration: 1000, easing: 'linear' } });
+        window.chart.render();
+        window.chart.setData({ datasets: [{ data: [{ x: 8, y: 8 }, { x: 10, y: 10 }] }] });
+    });
+
+    const frame = () => page.locator('canvas').evaluate((node) => node.toDataURL());
+    const initial = await frame();
+
+    await page.clock.runFor(500);
+    const intermediate = await frame();
+
+    expect(intermediate).not.toBe(initial);
+
+    await page.clock.runFor(600);
+    expect(await frame()).not.toBe(intermediate);
 });

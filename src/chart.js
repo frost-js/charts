@@ -5,7 +5,8 @@
 import BarChart from './charts/bar.js';
 import LineChart from './charts/line.js';
 import PieChart from './charts/pie.js';
-import { normalizeData } from './data.js';
+import { formatValue, normalizeData } from './data.js';
+import { ease } from './easing.js';
 import Grid from './layers/grid.js';
 import LabelsX from './layers/labels-x.js';
 import LabelsY from './layers/labels-y.js';
@@ -19,23 +20,25 @@ import { createScale } from './scale.js';
 
 /**
  * @typedef {object} ChartOptions
- * @property {'bar'|'line'|'pie'} [type='bar'] The chart type.
+ * @property {'bar'|'line'|'area'|'pie'|'donut'|'scatter'} [type='bar'] The chart type.
  * @property {ChartData} [data] The category labels and datasets.
  * @property {object} [font] The font inherited by chart layers.
  * @property {object} [title] The title text, position, and appearance.
  * @property {object} [legend] The legend position, bounds, and labels.
  * @property {object} [scales] The x and y grid and tick settings.
  * @property {object} [layout] The outer chart padding.
- * @property {object} [animation] The animation duration in milliseconds.
+ * @property {object} [animation] The animation duration and easing curve.
+ * @property {number} [cutout=.6] The donut's inner radius as a fraction of its outer radius.
  * @property {object} [tooltip] The tooltip visibility, font, and colors.
  * @property {boolean} [responsive=true] Whether to observe container size changes.
  * @property {string} [ariaLabel='Chart'] The accessible chart description prefix.
  */
 
 /**
- * Composes canvas layers to render bar, line, and pie charts.
+ * Composes canvas layers to render Cartesian and circular charts.
  */
 export default class Chart {
+    static Area = LineChart;
     static Bar = BarChart;
     /**
      * @type {ChartOptions}
@@ -47,13 +50,16 @@ export default class Chart {
             datasets: [],
         },
         animation: {
-            duration: 500,
+            duration: 300,
+            easing: 'easeOutQuad',
         },
+        cutout: .6,
         responsive: true,
         ariaLabel: 'Chart',
         tooltip: {
             display: true,
             padding: 8,
+            position: 'cursor',
             backgroundColor: '#000',
             color: '#fff',
             font: {},
@@ -138,12 +144,14 @@ export default class Chart {
             padding: 20,
         },
     };
+    static Donut = PieChart;
     static Grid = Grid;
     static Layer = Layer;
     static Legend = Legend;
     static Line = LineChart;
     static Pie = PieChart;
     static Rect = Rect;
+    static Scatter = LineChart;
     static Title = Title;
     static Tooltip = Tooltip;
 
@@ -163,6 +171,7 @@ export default class Chart {
     #pixelRatio = 1;
     #progress = 1;
     #scale = [0, 1];
+    #scaleX = [0, 1];
     #settings = null;
     #width = 0;
     #window = null;
@@ -283,6 +292,12 @@ export default class Chart {
         );
         this.#scale = createScale(this.getValues(), maxSteps);
 
+        if (this.#settings.type === 'scatter') {
+            const maxStepsX = Math.floor(this.#width / (this.#settings.font.size * 5));
+
+            this.#scaleX = createScale(this.getValues('x'), maxStepsX);
+        }
+
         const layers = Object.values(this.#layers);
         const chartRect = this.#outerRect.clone();
         const next = (rect) => {
@@ -362,35 +377,45 @@ export default class Chart {
     }
 
     /**
-     * Gets a copy of the calculated y scale.
+     * Gets a copy of the calculated numeric scale.
+     * @param {string} [axis='y'] The numeric axis; x is used by scatter charts.
      * @returns {number[]} The scale ticks.
      */
-    getScale() {
-        return [...this.#scale];
+    getScale(axis = 'y') {
+        return [...(axis === 'x' ? this.#scaleX : this.#scale)];
     }
 
     /**
      * Gets the upper scale boundary.
+     * @param {string} [axis='y'] The numeric axis.
      * @returns {number} The maximum tick value.
      */
-    getScaleMax() {
-        return this.#scale.at(-1);
+    getScaleMax(axis = 'y') {
+        return (axis === 'x' ? this.#scaleX : this.#scale).at(-1);
     }
 
     /**
      * Gets the lower scale boundary.
+     * @param {string} [axis='y'] The numeric axis.
      * @returns {number} The minimum tick value.
      */
-    getScaleMin() {
-        return this.#scale[0];
+    getScaleMin(axis = 'y') {
+        return (axis === 'x' ? this.#scaleX : this.#scale)[0];
     }
 
     /**
-     * Gets the values from all datasets.
+     * Gets the numeric values from all datasets.
+     * @param {string} [axis='y'] The coordinate to read for scatter data.
      * @returns {number[]} The dataset values.
      */
-    getValues() {
-        return this.#data ? this.#data.datasets.flatMap((dataset) => dataset.data) : [];
+    getValues(axis = 'y') {
+        if (!this.#data) {
+            return [];
+        }
+
+        const values = this.#data.datasets.flatMap((dataset) => dataset.data);
+
+        return this.#settings.type === 'scatter' ? values.map((point) => point[axis]) : values;
     }
 
     /**
@@ -481,8 +506,8 @@ export default class Chart {
             const elapsed = now - start;
             const progress = Math.min(1, Math.max(0, elapsed / duration));
 
-            this.#progress = progress;
-            this.#layers.chart.render(progress);
+            this.#progress = ease(progress, this.#settings.animation.easing);
+            this.#layers.chart.render(this.#progress);
             this.draw();
 
             if (progress < 1) {
@@ -563,7 +588,7 @@ export default class Chart {
             legend: new Legend(this, this.#settings.legend),
         };
 
-        if (this.#settings.type !== 'pie') {
+        if (!['pie', 'donut'].includes(this.#settings.type)) {
             this.#layers.ticksX = new LabelsX(this, this.#settings.scales.x.ticks);
             this.#layers.ticksY = new LabelsY(this, this.#settings.scales.y.ticks);
             this.#layers.grid = new Grid(this, this.#settings.scales);
@@ -574,9 +599,12 @@ export default class Chart {
                 this.#layers.chart = new BarChart(this, this.#settings.scales);
                 break;
             case 'line':
+            case 'area':
+            case 'scatter':
                 this.#layers.chart = new LineChart(this, this.#settings.scales);
                 break;
             case 'pie':
+            case 'donut':
                 this.#layers.chart = new PieChart(this, this.#settings.scales);
                 break;
         }
@@ -646,12 +674,12 @@ export default class Chart {
         this.#layers.tooltip.setActive(item);
         this.#layers.tooltip.render();
 
-        if (this.#settings.type === 'pie') {
+        if (['pie', 'donut'].includes(this.#settings.type)) {
             this.#layers.chart.render(this.#progress);
         }
 
         if (item && this.#settings.tooltip.display) {
-            this.#canvas.setAttribute('aria-description', `${item.label}. ${item.datasetLabel}: ${item.value}`);
+            this.#canvas.setAttribute('aria-description', `${item.label}. ${item.datasetLabel}: ${formatValue(item.value)}`);
         } else {
             this.#canvas.removeAttribute('aria-description');
         }
@@ -675,7 +703,9 @@ export default class Chart {
     #updateDescription() {
         const datasets = this.#data.datasets.map((dataset) => {
             const values = dataset.data.map((value, index) => {
-                return `${this.#data.labels[index]} ${value}`;
+                const label = this.#data.labels[index] ?? `Point ${index + 1}`;
+
+                return `${label} ${formatValue(value)}`;
             });
 
             return `${dataset.label}: ${values.join(', ')}`;

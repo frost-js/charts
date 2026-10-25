@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en" data-ui-theme="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scatter plots · Frost Charts</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fr0st/ui@4/dist/frost-ui.min.css">
+    <link rel="stylesheet" href="assets/demo.css">
+    <script src="../dist/frost-charts.js"></script>
+</head>
+
+<body>
+    <aside class="demo-sidebar bg-body border-end">
+        <a class="d-flex align-items-center gap-2 fw-bold fs-4 text-decoration-none mb-4" href="index.html">
+            <span class="badge bg-primary bg-gradient" aria-hidden="true">F</span>
+            <span>Charts</span>
+        </a>
+        <nav class="nav nav-pills flex-wrap flex-lg-column gap-1" aria-label="Chart examples">
+            <a class="nav-link" href="index.html">Overview</a>
+            <a class="nav-link" href="bar.html">Grouped bars</a>
+            <a class="nav-link" href="line.html">Line series</a>
+            <a class="nav-link" href="area.html">Area series</a>
+            <a class="nav-link" href="pie.htm">Pie slices</a>
+            <a class="nav-link" href="donut.html">Donut slices</a>
+            <a class="nav-link active" href="scatter.html" aria-current="page">Scatter plots</a>
+            <a class="nav-link" href="legend.html">Legend placement</a>
+            <a class="nav-link" href="tooltip.html">Tooltip positions</a>
+        </nav>
+        <p class="small text-body-secondary mt-4 mb-0">Standalone canvas charts.<br><a href="../README.md">API reference</a></p>
+    </aside>
+    <main class="demo-main container-fluid py-4 py-lg-5">
+        <header class="mb-4">
+            <span class="badge bg-primary-subtle text-primary-subtle mb-3">Scatter plots</span>
+            <h1 class="display-5">Compare individual observations</h1>
+            <p class="lead text-body-secondary mb-0">Each point has numeric x and y coordinates. The series can contain different numbers of observations.</p>
+        </header>
+
+        <section class="card shadow-sm mb-4" aria-label="Interactive scatter chart">
+            <div class="card-body p-3 p-md-4">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+                    <h2 class="h5 mb-0">Compare individual observations</h2>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-primary btn-sm" id="update-data" type="button">Update data</button>
+                        <button class="btn btn-outline-primary btn-sm" id="reset-data" type="button">Reset</button>
+                    </div>
+                </div>
+                <div id="chart" style="height: 400px;"></div>
+                <p class="small text-body-secondary mb-0 mt-3" id="chart-status" role="status">Showing the original data.</p>
+            </div>
+        </section>
+
+        <section class="row g-4 mb-5" aria-label="Things to try">
+            <div class="col-md-6">
+                <h2 class="h5">Inspect the values</h2>
+                <p class="text-body-secondary mb-0">Hover over a point to see its label and value. Resize the window to see the chart adapt.</p>
+            </div>
+            <div class="col-md-6">
+                <h2 class="h5">Try an update</h2>
+                <p class="text-body-secondary mb-0">Update the y values to see observations move along the numeric axes. Reduced-motion preferences are respected automatically.</p>
+            </div>
+        </section>
+
+        <footer class="border-top pt-4 text-body-secondary">
+            Source and API: <a href="../README.md">README</a> · <a href="https://github.com/frost-js/charts">GitHub</a>
+        </footer>
+    </main>
+
+    <script>
+        const data = {
+            datasets: [
+                {
+                    label: 'Group A',
+                    data: [{ x: 1, y: 3 }, { x: 2, y: 7 }, { x: 5, y: 6 }, { x: 9, y: 12 }, { x: 10, y: 9 }],
+                    pointRadius: 5,
+                },
+                {
+                    label: 'Group B',
+                    data: [{ x: 2, y: 2 }, { x: 4, y: 4 }, { x: 8, y: 7 }],
+                    pointRadius: 5,
+                },
+            ],
+        };
+        const chart = new Chart(document.getElementById('chart'), {
+            type: 'scatter',
+            data,
+            title: { display: false },
+            legend: { position: 'bottom' },
+            scales: {
+                x: { grid: { display: false } },
+                y: { grid: { lineColor: '#e2e8f0', drawBorder: false } },
+            },
+        });
+
+        document.getElementById('update-data').addEventListener('click', () => {
+            const datasets = chart.getData();
+
+            for (const dataset of datasets) {
+                dataset.data = dataset.data.map((point, index) => ({
+                    x: point.x,
+                    y: point.y + (index % 2 ? 2 : -2),
+                }));
+            }
+
+            chart.setData({ labels: data.labels, datasets });
+            document.getElementById('chart-status').textContent = 'Sample values updated.';
+        });
+
+        document.getElementById('reset-data').addEventListener('click', () => {
+            chart.setData(data);
+            document.getElementById('chart-status').textContent = 'Showing the original data.';
+        });
+    </script>
+</body>
+
+</html>

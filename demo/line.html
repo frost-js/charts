@@ -6,24 +6,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Line series · Frost Charts</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fr0st/ui@4/dist/frost-ui.min.css">
+    <link rel="stylesheet" href="assets/demo.css">
     <script src="../dist/frost-charts.js"></script>
 </head>
 
 <body>
-    <header class="navbar bg-glass border-bottom">
-        <div class="container d-flex flex-wrap align-items-center justify-content-between gap-3">
-            <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="index.html">
-                <span class="badge bg-primary bg-gradient fs-5" aria-hidden="true">F</span>
-                <span>Charts</span>
-            </a>
-            <nav class="d-flex flex-wrap gap-2" aria-label="Chart examples">
-                <a class="btn btn-sm btn-outline-primary" href="bar.html">Grouped bars</a>
-                <a class="btn btn-sm btn-primary" href="line.html" aria-current="page">Line series</a>
-                <a class="btn btn-sm btn-outline-primary" href="pie.htm">Pie slices</a>
-            </nav>
-        </div>
-    </header>
-    <main class="container py-4 py-lg-5">
+    <aside class="demo-sidebar bg-body border-end">
+        <a class="d-flex align-items-center gap-2 fw-bold fs-4 text-decoration-none mb-4" href="index.html">
+            <span class="badge bg-primary bg-gradient" aria-hidden="true">F</span>
+            <span>Charts</span>
+        </a>
+        <nav class="nav nav-pills flex-wrap flex-lg-column gap-1" aria-label="Chart examples">
+            <a class="nav-link" href="index.html">Overview</a>
+            <a class="nav-link" href="bar.html">Grouped bars</a>
+            <a class="nav-link active" href="line.html" aria-current="page">Line series</a>
+            <a class="nav-link" href="area.html">Area series</a>
+            <a class="nav-link" href="pie.htm">Pie slices</a>
+            <a class="nav-link" href="donut.html">Donut slices</a>
+            <a class="nav-link" href="scatter.html">Scatter plots</a>
+            <a class="nav-link" href="legend.html">Legend placement</a>
+            <a class="nav-link" href="tooltip.html">Tooltip positions</a>
+        </nav>
+        <p class="small text-body-secondary mt-4 mb-0">Standalone canvas charts.<br><a href="../README.md">API reference</a></p>
+    </aside>
+    <main class="demo-main container-fluid py-4 py-lg-5">
         <header class="mb-4">
             <span class="badge bg-primary-subtle text-primary-subtle mb-3">Line series</span>
             <h1 class="display-5">Follow weekly activity</h1>
@@ -86,7 +92,6 @@
             type: 'line',
             data,
             title: { display: false },
-            animation: { duration: 800 },
             legend: { position: 'bottom' },
             scales: {
                 x: { grid: { display: false } },

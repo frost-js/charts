@@ -2,15 +2,16 @@
 /**
 * @typedef {object} ChartDataset
 * @property {string} [label] The dataset label.
-* @property {number[]} data The values, one per chart label.
+* @property {Array<number|{x: number, y: number}>} data Values, or numeric x/y points for scatter charts.
 * @property {string|string[]} [backgroundColor] The fill color or repeating colors.
 * @property {string|string[]} [borderColor] The border color or repeating colors.
 * @property {number} [borderWidth=1] The border width in CSS pixels.
-* @property {number} [pointRadius=2] The line point radius in CSS pixels.
+* @property {number} [pointRadius=2] The point radius in CSS pixels; scatter defaults to 4.
+* @property {number} [fillOpacity=.2] The area fill opacity.
 */
 /**
 * @typedef {object} ChartData
-* @property {Array<string|number>} labels The category labels.
+* @property {Array<string|number>} [labels] Category labels; optional point labels for scatter charts.
 * @property {ChartDataset[]} datasets The chart datasets.
 */
 var defaultColors = [
@@ -19,7 +20,13 @@ var defaultColors = [
 	"#059669",
 	"#9333ea",
 	"#d97706",
-	"#0891b2"
+	"#0891b2",
+	"#db2777",
+	"#65a30d",
+	"#ea580c",
+	"#4f46e5",
+	"#0d9488",
+	"#64748b"
 ];
 /**
 * Copies a color or color array into a validated, nonempty array.
@@ -34,6 +41,27 @@ function normalizeColors(colors, name) {
 	return values;
 }
 /**
+* Copies finite numbers or scatter coordinates into an independent data array.
+* @param {Array} data The supplied values or points.
+* @param {string} type The chart type.
+* @param {number} index The dataset index used in errors.
+* @returns {Array} The validated values or points.
+*/
+function normalizeValues(data, type, index) {
+	return Array.from(data, (value) => {
+		if (type === "scatter") {
+			if (!value || !Number.isFinite(value.x) || !Number.isFinite(value.y)) throw new TypeError(`Dataset ${index} points must have finite x and y coordinates.`);
+			return {
+				x: value.x,
+				y: value.y
+			};
+		}
+		if (!Number.isFinite(value)) throw new TypeError(`Dataset ${index} values must be finite numbers.`);
+		if (["pie", "donut"].includes(type) && value < 0) throw new RangeError(`Dataset ${index} pie and donut values must be nonnegative.`);
+		return value;
+	});
+}
+/**
 * Validates and copies one dataset without modifying the caller's data.
 * @param {ChartDataset} dataset The supplied dataset.
 * @param {number} index The dataset index.
@@ -43,26 +71,26 @@ function normalizeColors(colors, name) {
 */
 function normalizeDataset(dataset, index, labelCount, type) {
 	if (!dataset || !Array.isArray(dataset.data)) throw new TypeError(`Dataset ${index} requires a data array.`);
-	if (dataset.data.length !== labelCount) throw new RangeError(`Dataset ${index} must have one value per label.`);
-	const values = Array.from(dataset.data);
-	for (const value of values) {
-		if (typeof value !== "number" || !Number.isFinite(value)) throw new TypeError(`Dataset ${index} values must be finite numbers.`);
-		if (type === "pie" && value < 0) throw new RangeError(`Dataset ${index} pie values must be nonnegative.`);
-	}
+	if (type !== "scatter" && dataset.data.length !== labelCount) throw new RangeError(`Dataset ${index} must have one value per label.`);
+	const values = normalizeValues(dataset.data, type, index);
 	const borderWidth = dataset.borderWidth ?? 1;
-	const pointRadius = dataset.pointRadius ?? 2;
+	const pointRadius = dataset.pointRadius ?? (type === "scatter" ? 4 : 2);
+	const fillOpacity = dataset.fillOpacity ?? .2;
 	if (!Number.isFinite(borderWidth) || borderWidth < 0) throw new RangeError(`Dataset ${index} borderWidth must be a finite, nonnegative number.`);
 	if (!Number.isFinite(pointRadius) || pointRadius < 0) throw new RangeError(`Dataset ${index} pointRadius must be a finite, nonnegative number.`);
+	if (!Number.isFinite(fillOpacity) || fillOpacity < 0 || fillOpacity > 1) throw new RangeError(`Dataset ${index} fillOpacity must be between zero and one.`);
+	const circular = ["pie", "donut"].includes(type);
 	const defaultColor = defaultColors[index % defaultColors.length];
-	const backgroundColor = dataset.backgroundColor ?? (type === "pie" ? defaultColors : defaultColor);
-	const borderColor = dataset.borderColor ?? (type === "pie" ? "#ffffff" : defaultColor);
+	const backgroundColor = dataset.backgroundColor ?? (circular ? defaultColors : defaultColor);
+	const borderColor = dataset.borderColor ?? (circular ? "#ffffff" : defaultColor);
 	return {
 		label: String(dataset.label ?? `Dataset ${index + 1}`),
 		data: values,
 		backgroundColor: normalizeColors(backgroundColor, `Dataset ${index} backgroundColor`),
 		borderColor: normalizeColors(borderColor, `Dataset ${index} borderColor`),
 		borderWidth,
-		pointRadius
+		pointRadius,
+		fillOpacity
 	};
 }
 /**
@@ -72,8 +100,10 @@ function normalizeDataset(dataset, index, labelCount, type) {
 * @returns {ChartData} The independent, normalized chart data.
 */
 function normalizeData(data, type) {
-	if (!data || !Array.isArray(data.labels) || !Array.isArray(data.datasets)) throw new TypeError("Chart data requires labels and datasets arrays.");
-	const labels = Array.from(data.labels, (label) => String(label));
+	if (!data || !Array.isArray(data.datasets)) throw new TypeError("Chart data requires a datasets array.");
+	const inputLabels = type === "scatter" ? data.labels ?? [] : data.labels;
+	if (!Array.isArray(inputLabels)) throw new TypeError("Chart labels must be an array.");
+	const labels = Array.from(inputLabels, (label) => String(label));
 	return {
 		labels,
 		datasets: Array.from(data.datasets, (dataset, index) => {
@@ -91,6 +121,14 @@ function normalizeData(data, type) {
 function getColor(dataset, property, index) {
 	const colors = dataset[property];
 	return colors[index % colors.length];
+}
+/**
+* Formats a numeric value or scatter coordinates for tooltips and descriptions.
+* @param {number|{x: number, y: number}} value The data value.
+* @returns {string} The readable value.
+*/
+function formatValue(value) {
+	return typeof value === "object" ? `(${value.x}, ${value.y})` : String(value);
 }
 
 // src/layers/layer.js
@@ -408,7 +446,7 @@ var BarChart = class extends Layer {
 
 // src/charts/line.js
 /**
-* Renders connected data points on the Cartesian axes.
+* Renders line, area, and scatter series on the Cartesian axes.
 */
 var LineChart = class extends Layer {
 	#baseY = 0;
@@ -432,8 +470,11 @@ var LineChart = class extends Layer {
 	* Calculates target points and retains the visible positions for transitions.
 	*/
 	data() {
+		const scatter = this.chart.options.type === "scatter";
 		const labels = this.chart.getLabels();
 		const datasets = this.chart.getData();
+		const minX = this.chart.getScaleMin("x");
+		const maxX = this.chart.getScaleMax("x");
 		const min = this.chart.getScaleMin();
 		const max = this.chart.getScaleMax();
 		const step = labels.length > 1 ? this.rect.width / (labels.length - 1) : 0;
@@ -442,19 +483,25 @@ var LineChart = class extends Layer {
 		this.#baseY = this.rect.height * (1 - getScalePosition(0, min, max));
 		for (const [datasetIndex, dataset] of datasets.entries()) {
 			const points = [];
-			for (const [index, value] of dataset.data.entries()) points.push({
-				x: labels.length === 1 ? this.rect.width / 2 : index * step,
-				y: this.rect.height * (1 - getScalePosition(value, min, max)),
-				backgroundColor: getColor(dataset, "backgroundColor", index),
-				borderColor: getColor(dataset, "borderColor", index),
-				borderWidth: dataset.borderWidth,
-				pointRadius: dataset.pointRadius,
-				label: labels[index],
-				datasetLabel: dataset.label,
-				datasetIndex,
-				index,
-				value
-			});
+			for (const [index, value] of dataset.data.entries()) {
+				let x = labels.length === 1 ? this.rect.width / 2 : index * step;
+				if (scatter) x = this.rect.width * getScalePosition(value.x, minX, maxX);
+				const yValue = scatter ? value.y : value;
+				points.push({
+					x,
+					y: this.rect.height * (1 - getScalePosition(yValue, min, max)),
+					backgroundColor: getColor(dataset, "backgroundColor", index),
+					borderColor: getColor(dataset, "borderColor", index),
+					borderWidth: dataset.borderWidth,
+					pointRadius: dataset.pointRadius,
+					fillOpacity: dataset.fillOpacity,
+					label: labels[index] ?? `Point ${index + 1}`,
+					datasetLabel: dataset.label,
+					datasetIndex,
+					index,
+					value
+				});
+			}
 			this.#points.push(points);
 		}
 	}
@@ -464,8 +511,7 @@ var LineChart = class extends Layer {
 	*/
 	render(progress = 1) {
 		super.render();
-		const offsetX = this.rect.x - this.canvasRect.x;
-		const offsetY = this.rect.y - this.canvasRect.y;
+		const type = this.chart.options.type;
 		const datasetCount = Math.max(this.#points.length, this.#oldPoints.length);
 		this.#renderedPoints = [];
 		for (let datasetIndex = 0; datasetIndex < datasetCount; datasetIndex++) {
@@ -473,10 +519,10 @@ var LineChart = class extends Layer {
 			const oldPoints = this.#oldPoints[datasetIndex] || [];
 			const count = Math.max(targets.length, oldPoints.length);
 			const rendered = [];
-			let previous = null;
 			for (let index = 0; index < count; index++) {
 				const target = targets[index];
 				const old = oldPoints[index];
+				if (!target && progress === 1) continue;
 				const next = target || {
 					...old,
 					y: this.#baseY,
@@ -487,50 +533,82 @@ var LineChart = class extends Layer {
 					y: this.#baseY,
 					pointRadius: 0
 				};
-				const x = start.x + (next.x - start.x) * progress;
-				const y = start.y + (next.y - start.y) * progress;
-				const radius = start.pointRadius + (next.pointRadius - start.pointRadius) * progress;
-				if (!target && progress === 1) continue;
 				rendered.push({
 					...next,
-					x,
-					y,
-					pointRadius: radius
+					x: start.x + (next.x - start.x) * progress,
+					y: start.y + (next.y - start.y) * progress,
+					pointRadius: start.pointRadius + (next.pointRadius - start.pointRadius) * progress,
+					interactive: Boolean(target)
 				});
-				const point = new Path2D();
-				const hit = new Path2D();
-				this.context.strokeStyle = next.borderColor;
-				this.context.fillStyle = next.backgroundColor;
-				if (previous && next.borderWidth) {
-					this.context.beginPath();
-					this.context.moveTo(previous.x + offsetX, previous.y + offsetY);
-					this.context.lineTo(x + offsetX, y + offsetY);
-					this.context.lineWidth = next.borderWidth;
-					this.context.stroke();
-				}
-				point.arc(x + offsetX, y + offsetY, radius, 0, Math.PI * 2);
-				this.context.fill(point);
-				if (next.borderWidth) {
-					this.context.lineWidth = next.borderWidth;
-					this.context.stroke(point);
-				}
-				if (target) {
-					hit.arc(x + offsetX, y + offsetY, Math.max(6, radius), 0, Math.PI * 2);
-					this.addHitRegion(hit, target);
-				}
-				previous = {
-					x,
-					y
-				};
 			}
 			this.#renderedPoints.push(rendered);
+		}
+		if (type === "area") for (const points of this.#renderedPoints) this.#fillArea(points);
+		for (const points of this.#renderedPoints) this.#renderSeries(points, type !== "scatter");
+	}
+	/**
+	* Fills the area between a series and the current zero baseline.
+	* @param {object[]} points The interpolated points.
+	*/
+	#fillArea(points) {
+		if (points.length < 2) return;
+		const offsetX = this.rect.x - this.canvasRect.x;
+		const offsetY = this.rect.y - this.canvasRect.y;
+		const path = new Path2D();
+		path.moveTo(points[0].x + offsetX, this.#baseY + offsetY);
+		for (const point of points) path.lineTo(point.x + offsetX, point.y + offsetY);
+		path.lineTo(points.at(-1).x + offsetX, this.#baseY + offsetY);
+		path.closePath();
+		this.context.save();
+		this.context.globalAlpha = points[0].fillOpacity;
+		this.context.fillStyle = points[0].backgroundColor;
+		this.context.fill(path);
+		this.context.restore();
+	}
+	/**
+	* Draws visible points and optional connecting segments.
+	* @param {object[]} points The interpolated points.
+	* @param {boolean} connected Whether to connect successive points.
+	*/
+	#renderSeries(points, connected) {
+		const offsetX = this.rect.x - this.canvasRect.x;
+		const offsetY = this.rect.y - this.canvasRect.y;
+		let previous = null;
+		for (const item of points) {
+			const x = item.x + offsetX;
+			const y = item.y + offsetY;
+			const point = new Path2D();
+			const hit = new Path2D();
+			this.context.strokeStyle = item.borderColor;
+			this.context.fillStyle = item.backgroundColor;
+			if (connected && previous && item.borderWidth) {
+				this.context.beginPath();
+				this.context.moveTo(previous.x, previous.y);
+				this.context.lineTo(x, y);
+				this.context.lineWidth = item.borderWidth;
+				this.context.stroke();
+			}
+			point.arc(x, y, item.pointRadius, 0, Math.PI * 2);
+			this.context.fill(point);
+			if (item.borderWidth) {
+				this.context.lineWidth = item.borderWidth;
+				this.context.stroke(point);
+			}
+			if (item.interactive) {
+				hit.arc(x, y, Math.max(6, item.pointRadius), 0, Math.PI * 2);
+				this.addHitRegion(hit, item);
+			}
+			previous = {
+				x,
+				y
+			};
 		}
 	}
 };
 
 // src/charts/pie.js
 /**
-* Renders the original combined pie using all dataset values.
+* Renders a combined pie or donut using all dataset values.
 */
 var PieChart = class extends Layer {
 	#oldSlices = [];
@@ -570,6 +648,7 @@ var PieChart = class extends Layer {
 		super.render();
 		const spacing = Math.min(5, this.rect.width / 4, this.rect.height / 4);
 		const radius = Math.max(0, Math.min(this.rect.width, this.rect.height) / 2 - spacing);
+		const innerRadius = radius * (this.chart.options.type === "donut" ? this.chart.options.cutout : 0);
 		const datasetCount = Math.max(this.#slices.length, this.#oldSlices.length);
 		let start = 0;
 		this.#renderedSlices = [];
@@ -597,8 +676,9 @@ var PieChart = class extends Layer {
 				const x = this.rect.width / 2 + Math.cos(middle) * spacing;
 				const y = this.rect.height / 2 + Math.sin(middle) * spacing;
 				const path = new Path2D();
-				path.moveTo(x, y);
 				path.arc(x, y, radius, start, start + angle);
+				if (innerRadius) path.arc(x, y, innerRadius, start + angle, start, true);
+				else path.lineTo(x, y);
 				path.closePath();
 				this.context.fillStyle = next.backgroundColor;
 				this.context.fill(path);
@@ -619,6 +699,21 @@ var PieChart = class extends Layer {
 	}
 };
 
+// src/easing.js
+/**
+* Applies the configured timing curve to a fraction between zero and one.
+* @param {number} progress The elapsed animation fraction.
+* @param {string} easing The timing curve name.
+* @returns {number} The eased animation fraction.
+*/
+function ease(progress, easing) {
+	switch (easing) {
+		case "easeOutQuad": return 1 - (1 - progress) ** 2;
+		case "easeInOutQuad": return progress < .5 ? 2 * progress ** 2 : 1 - (-2 * progress + 2) ** 2 / 2;
+		default: return progress;
+	}
+}
+
 // src/layers/grid.js
 /**
 * @import Rect from '../rect.js';
@@ -637,7 +732,7 @@ var Grid = class extends Layer {
 	*/
 	calculate(chartRect, next) {
 		this.rect = chartRect.clone();
-		this.#labelsX = this.chart.getLabels();
+		this.#labelsX = this.chart.options.type === "scatter" ? this.chart.getScale("x") : this.chart.getLabels();
 		this.#labelsY = this.chart.getScale();
 		const tickX = Math.min(chartRect.height, this.#tickLength("x"));
 		const tickY = Math.min(chartRect.width, this.#tickLength("y"));
@@ -769,6 +864,10 @@ var Grid = class extends Layer {
 	#x(index) {
 		const count = this.#labelsX.length;
 		const rect = this.#plotRect;
+		if (this.chart.options.type === "scatter") {
+			const position = getScalePosition(this.#labelsX[index], this.#labelsX[0], this.#labelsX.at(-1));
+			return rect.left + position * rect.width;
+		}
 		if (this.chart.options.type === "bar") return rect.left + (index + .5) * rect.width / Math.max(1, count);
 		return count > 1 ? rect.left + index * rect.width / (count - 1) : rect.centerX;
 	}
@@ -851,13 +950,14 @@ function wrapLines(context, text, maxWidth) {
 * @import Rect from '../rect.js';
 */
 /**
-* Lays out and renders category labels below the plot.
+* Lays out category labels or numeric scatter ticks below the plot.
 */
 var LabelsX = class extends Layer {
 	#gridWidth;
 	#labels;
 	#metrics;
 	#offset;
+	#values;
 	/**
 	* Calculates the layer bounds before continuing layout.
 	* @param {Rect} chartRect The remaining chart rectangle.
@@ -873,7 +973,8 @@ var LabelsX = class extends Layer {
 			return;
 		}
 		updateFont(this.context, this.settings.font);
-		this.#labels = this.chart.getLabels().map((value, index) => {
+		this.#values = this.chart.options.type === "scatter" ? this.chart.getScale("x") : this.chart.getLabels();
+		this.#labels = this.#values.map((value, index) => {
 			const formatted = this.settings.callback ? this.settings.callback(value, index) : value;
 			return String(formatted);
 		});
@@ -892,6 +993,8 @@ var LabelsX = class extends Layer {
 				this.#offset = this.#gridWidth / 2;
 				break;
 			case "line":
+			case "area":
+			case "scatter":
 				this.#gridWidth = this.#labels.length > 1 ? chartRect.width / (this.#labels.length - 1) : 0;
 				this.#offset = this.#labels.length === 1 ? chartRect.width / 2 : 0;
 		}
@@ -917,7 +1020,9 @@ var LabelsX = class extends Layer {
 		this.context.fillStyle = this.settings.color;
 		for (const [i, value] of this.#labels.entries()) {
 			const { fontBoundingBoxAscent: ascent, width } = this.#metrics[i];
-			const labelX = i * this.#gridWidth + this.#gridWidth / 2 - width / 2 + this.#offset;
+			let position = i * this.#gridWidth + this.#offset;
+			if (this.chart.options.type === "scatter") position = getScalePosition(this.#values[i], this.#values[0], this.#values.at(-1)) * this.rect.width;
+			const labelX = position + this.#gridWidth / 2 - width / 2;
 			const labelY = ascent + this.settings.padding;
 			this.context.fillText(value, labelX, labelY);
 		}
@@ -1028,7 +1133,7 @@ var Legend = class extends Layer {
 		const maxWidth = Math.min(this.settings.maxWidth ?? availableWidth, availableWidth);
 		const maxHeight = Math.min(this.settings.maxHeight ?? availableHeight, availableHeight);
 		let datasets = this.chart.getData();
-		if (this.chart.options.type === "pie") {
+		if (["pie", "donut"].includes(this.chart.options.type)) {
 			const labels = this.chart.getLabels();
 			datasets = datasets.flatMap((dataset) => {
 				return labels.map((label, index) => ({
@@ -1442,7 +1547,7 @@ var Tooltip = class extends Layer {
 		this.canvasRect = this.chart.outerRect;
 	}
 	/**
-	* Clears the previous tooltip and draws the active item near the pointer.
+	* Draws the active item near the pointer or in the upper-right corner.
 	*/
 	render() {
 		super.render();
@@ -1450,7 +1555,7 @@ var Tooltip = class extends Layer {
 		updateFont(this.context, this.settings.font);
 		const { padding, font } = this.settings;
 		const maxWidth = Math.max(0, this.canvasRect.width - padding * 2);
-		const text = `${this.active.label}\n${this.active.datasetLabel}: ${this.active.value}`;
+		const text = `${this.active.label}\n${this.active.datasetLabel}: ${formatValue(this.active.value)}`;
 		const lines = wrapLines(this.context, text, maxWidth);
 		const lineHeight = font.size * font.lineHeight;
 		const textWidth = Math.max(0, ...lines.map((line) => measureText(this.context, line).width));
@@ -1458,8 +1563,12 @@ var Tooltip = class extends Layer {
 		const height = Math.min(this.canvasRect.height, lines.length * lineHeight + padding * 2);
 		const pointerX = this.active.x - this.canvasRect.x;
 		const pointerY = this.active.y - this.canvasRect.y;
-		const x = Math.max(0, Math.min(pointerX + 10, this.canvasRect.width - width));
-		const y = Math.max(0, Math.min(pointerY + 10, this.canvasRect.height - height));
+		let x = Math.max(0, Math.min(pointerX + 10, this.canvasRect.width - width));
+		let y = Math.max(0, Math.min(pointerY + 10, this.canvasRect.height - height));
+		if (this.settings.position === "fixed") {
+			x = this.canvasRect.width - width;
+			y = 0;
+		}
 		this.context.fillStyle = this.settings.backgroundColor;
 		this.context.fillRect(x, y, width, height);
 		this.context.fillStyle = this.settings.color;
@@ -1562,12 +1671,22 @@ function normalizeOptions(options) {
 	if (![
 		"bar",
 		"line",
-		"pie"
-	].includes(options.type)) throw new TypeError("Chart type must be bar, line, or pie.");
+		"area",
+		"pie",
+		"donut",
+		"scatter"
+	].includes(options.type)) throw new TypeError("Chart type must be bar, line, area, pie, donut, or scatter.");
 	if (!options.font || !options.title || !options.legend?.labels || !options.tooltip) throw new TypeError("Chart options require font, title, legend, and tooltip settings.");
 	validateFont(options.font, "font");
 	validateDimension(options.layout?.padding, "layout.padding");
 	validateDimension(options.animation?.duration, "animation.duration");
+	if (![
+		"linear",
+		"easeOutQuad",
+		"easeInOutQuad"
+	].includes(options.animation.easing)) throw new TypeError("Animation easing must be linear, easeOutQuad, or easeInOutQuad.");
+	if (!Number.isFinite(options.cutout) || options.cutout < 0 || options.cutout >= 1) throw new RangeError("Donut cutout must be at least zero and less than one.");
+	if (!["cursor", "fixed"].includes(options.tooltip.position)) throw new TypeError("Tooltip position must be cursor or fixed.");
 	validatePosition(options.title, "title");
 	validateDimension(options.title.padding, "title.padding");
 	options.title.font = mergeOptions(options.font, options.title.font);
@@ -1663,22 +1782,24 @@ var Rect = class Rect {
 */
 /**
 * @typedef {object} ChartOptions
-* @property {'bar'|'line'|'pie'} [type='bar'] The chart type.
+* @property {'bar'|'line'|'area'|'pie'|'donut'|'scatter'} [type='bar'] The chart type.
 * @property {ChartData} [data] The category labels and datasets.
 * @property {object} [font] The font inherited by chart layers.
 * @property {object} [title] The title text, position, and appearance.
 * @property {object} [legend] The legend position, bounds, and labels.
 * @property {object} [scales] The x and y grid and tick settings.
 * @property {object} [layout] The outer chart padding.
-* @property {object} [animation] The animation duration in milliseconds.
+* @property {object} [animation] The animation duration and easing curve.
+* @property {number} [cutout=.6] The donut's inner radius as a fraction of its outer radius.
 * @property {object} [tooltip] The tooltip visibility, font, and colors.
 * @property {boolean} [responsive=true] Whether to observe container size changes.
 * @property {string} [ariaLabel='Chart'] The accessible chart description prefix.
 */
 /**
-* Composes canvas layers to render bar, line, and pie charts.
+* Composes canvas layers to render Cartesian and circular charts.
 */
 var Chart = class Chart {
+	static Area = LineChart;
 	static Bar = BarChart;
 	/**
 	* @type {ChartOptions}
@@ -1689,12 +1810,17 @@ var Chart = class Chart {
 			labels: [],
 			datasets: []
 		},
-		animation: { duration: 500 },
+		animation: {
+			duration: 300,
+			easing: "easeOutQuad"
+		},
+		cutout: .6,
 		responsive: true,
 		ariaLabel: "Chart",
 		tooltip: {
 			display: true,
 			padding: 8,
+			position: "cursor",
 			backgroundColor: "#000",
 			color: "#fff",
 			font: {}
@@ -1777,12 +1903,14 @@ var Chart = class Chart {
 		},
 		layout: { padding: 20 }
 	};
+	static Donut = PieChart;
 	static Grid = Grid;
 	static Layer = Layer;
 	static Legend = Legend;
 	static Line = LineChart;
 	static Pie = PieChart;
 	static Rect = Rect;
+	static Scatter = LineChart;
 	static Title = Title;
 	static Tooltip = Tooltip;
 	static #instances = /* @__PURE__ */ new WeakMap();
@@ -1800,6 +1928,7 @@ var Chart = class Chart {
 	#pixelRatio = 1;
 	#progress = 1;
 	#scale = [0, 1];
+	#scaleX = [0, 1];
 	#settings = null;
 	#width = 0;
 	#window = null;
@@ -1884,6 +2013,10 @@ var Chart = class Chart {
 		const maxSteps = Math.floor(this.#height / (this.#settings.font.size * 2.5));
 		this.#outerRect = new Rect(padding, padding, Math.max(0, this.#width - padding * 2), Math.max(0, this.#height - padding * 2));
 		this.#scale = createScale(this.getValues(), maxSteps);
+		if (this.#settings.type === "scatter") {
+			const maxStepsX = Math.floor(this.#width / (this.#settings.font.size * 5));
+			this.#scaleX = createScale(this.getValues("x"), maxStepsX);
+		}
 		const layers = Object.values(this.#layers);
 		const chartRect = this.#outerRect.clone();
 		const next = (rect) => {
@@ -1941,32 +2074,38 @@ var Chart = class Chart {
 		return this.#data ? [...this.#data.labels] : [];
 	}
 	/**
-	* Gets a copy of the calculated y scale.
+	* Gets a copy of the calculated numeric scale.
+	* @param {string} [axis='y'] The numeric axis; x is used by scatter charts.
 	* @returns {number[]} The scale ticks.
 	*/
-	getScale() {
-		return [...this.#scale];
+	getScale(axis = "y") {
+		return [...axis === "x" ? this.#scaleX : this.#scale];
 	}
 	/**
 	* Gets the upper scale boundary.
+	* @param {string} [axis='y'] The numeric axis.
 	* @returns {number} The maximum tick value.
 	*/
-	getScaleMax() {
-		return this.#scale.at(-1);
+	getScaleMax(axis = "y") {
+		return (axis === "x" ? this.#scaleX : this.#scale).at(-1);
 	}
 	/**
 	* Gets the lower scale boundary.
+	* @param {string} [axis='y'] The numeric axis.
 	* @returns {number} The minimum tick value.
 	*/
-	getScaleMin() {
-		return this.#scale[0];
+	getScaleMin(axis = "y") {
+		return (axis === "x" ? this.#scaleX : this.#scale)[0];
 	}
 	/**
-	* Gets the values from all datasets.
+	* Gets the numeric values from all datasets.
+	* @param {string} [axis='y'] The coordinate to read for scatter data.
 	* @returns {number[]} The dataset values.
 	*/
-	getValues() {
-		return this.#data ? this.#data.datasets.flatMap((dataset) => dataset.data) : [];
+	getValues(axis = "y") {
+		if (!this.#data) return [];
+		const values = this.#data.datasets.flatMap((dataset) => dataset.data);
+		return this.#settings.type === "scatter" ? values.map((point) => point[axis]) : values;
 	}
 	/**
 	* Renders the layers at their final positions without starting an animation.
@@ -2021,8 +2160,8 @@ var Chart = class Chart {
 			if (!this.node) return;
 			const elapsed = now - start;
 			const progress = Math.min(1, Math.max(0, elapsed / duration));
-			this.#progress = progress;
-			this.#layers.chart.render(progress);
+			this.#progress = ease(progress, this.#settings.animation.easing);
+			this.#layers.chart.render(this.#progress);
 			this.draw();
 			if (progress < 1) this.#frame = this.#window.requestAnimationFrame(tick);
 		};
@@ -2076,7 +2215,7 @@ var Chart = class Chart {
 			title: new Title(this, this.#settings.title),
 			legend: new Legend(this, this.#settings.legend)
 		};
-		if (this.#settings.type !== "pie") {
+		if (!["pie", "donut"].includes(this.#settings.type)) {
 			this.#layers.ticksX = new LabelsX(this, this.#settings.scales.x.ticks);
 			this.#layers.ticksY = new LabelsY(this, this.#settings.scales.y.ticks);
 			this.#layers.grid = new Grid(this, this.#settings.scales);
@@ -2086,9 +2225,12 @@ var Chart = class Chart {
 				this.#layers.chart = new BarChart(this, this.#settings.scales);
 				break;
 			case "line":
+			case "area":
+			case "scatter":
 				this.#layers.chart = new LineChart(this, this.#settings.scales);
 				break;
-			case "pie": this.#layers.chart = new PieChart(this, this.#settings.scales);
+			case "pie":
+			case "donut": this.#layers.chart = new PieChart(this, this.#settings.scales);
 		}
 		this.#layers.tooltip = new Tooltip(this, this.#settings.tooltip);
 	}
@@ -2135,8 +2277,8 @@ var Chart = class Chart {
 		this.#layers.chart.setActive(item);
 		this.#layers.tooltip.setActive(item);
 		this.#layers.tooltip.render();
-		if (this.#settings.type === "pie") this.#layers.chart.render(this.#progress);
-		if (item && this.#settings.tooltip.display) this.#canvas.setAttribute("aria-description", `${item.label}. ${item.datasetLabel}: ${item.value}`);
+		if (["pie", "donut"].includes(this.#settings.type)) this.#layers.chart.render(this.#progress);
+		if (item && this.#settings.tooltip.display) this.#canvas.setAttribute("aria-description", `${item.label}. ${item.datasetLabel}: ${formatValue(item.value)}`);
 		else this.#canvas.removeAttribute("aria-description");
 		this.draw();
 	}
@@ -2155,7 +2297,7 @@ var Chart = class Chart {
 	#updateDescription() {
 		const datasets = this.#data.datasets.map((dataset) => {
 			const values = dataset.data.map((value, index) => {
-				return `${this.#data.labels[index]} ${value}`;
+				return `${this.#data.labels[index] ?? `Point ${index + 1}`} ${formatValue(value)}`;
 			});
 			return `${dataset.label}: ${values.join(", ")}`;
 		});
