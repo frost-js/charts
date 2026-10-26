@@ -1,10 +1,10 @@
 # Frost Charts
 
-[![CI](https://github.com/frost-js/charts/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/frost-js/charts/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/frost-js/charts/branch/master/graph/badge.svg)](https://codecov.io/gh/frost-js/charts)
+[![CI](https://github.com/frost-js/charts/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/frost-js/charts/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/frost-js/charts/branch/main/graph/badge.svg)](https://codecov.io/gh/frost-js/charts)
 [![npm version](https://img.shields.io/npm/v/%40fr0st%2Fcharts?style=flat-square)](https://www.npmjs.com/package/@fr0st/charts)
 [![npm downloads](https://img.shields.io/npm/dm/%40fr0st%2Fcharts?style=flat-square)](https://www.npmjs.com/package/@fr0st/charts)
-[![JS gzip size](https://img.badgesize.io/frost-js/charts/master/dist/frost-charts.min.js?compression=gzip&label=JS%20gzip%20size&style=flat-square)](https://github.com/frost-js/charts/blob/master/dist/frost-charts.min.js)
+[![JS gzip size](https://img.badgesize.io/frost-js/charts/main/dist/frost-charts.min.js?compression=gzip&label=JS%20gzip%20size&style=flat-square)](https://github.com/frost-js/charts/blob/main/dist/frost-charts.min.js)
 [![license](https://img.shields.io/github/license/frost-js/charts?style=flat-square)](./LICENSE)
 
 Standalone canvas bar, line, area, pie, donut, scatter, polar area, and radar charts with no runtime dependencies. Charts support horizontal and stacked bars, titles, interactive legends, configurable axes, animated updates, pointer tooltips, responsive sizing, and high-DPI rendering.
