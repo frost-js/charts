@@ -3,6 +3,53 @@
 import { parseNumber, parsePositiveNumber } from './helpers.js';
 
 /**
+ * Copies nested arrays and plain objects, preserving other values by reference.
+ * @param {*} value The option value.
+ * @returns {*} The copied array or plain object, or the original value.
+ */
+function cloneOption(value) {
+    if (Array.isArray(value)) {
+        return value.map((item) => cloneOption(item));
+    }
+
+    return isPlainObject(value) ? mergeOptions(value) : value;
+}
+
+/**
+ * Freezes copied arrays and plain objects without freezing caller-owned values.
+ * @param {object} options The copied options.
+ * @returns {object} The frozen options.
+ */
+export function freezeOptions(options) {
+    if (!Array.isArray(options) && !isPlainObject(options)) {
+        return options;
+    }
+
+    for (const value of Object.values(options)) {
+        if (Array.isArray(value) || isPlainObject(value)) {
+            freezeOptions(value);
+        }
+    }
+
+    return Object.freeze(options);
+}
+
+/**
+ * Checks for a plain object, including objects from another realm.
+ * @param {*} value The value to check.
+ * @returns {boolean} Whether the value is a plain object.
+ */
+function isPlainObject(value) {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+
+    return prototype === null || Object.getPrototypeOf(prototype) === null;
+}
+
+/**
  * Merges option objects, cloning arrays instead of merging their entries.
  * @param {...object} sources The option sources in precedence order.
  * @returns {object} The merged options.
@@ -20,34 +67,17 @@ export function mergeOptions(...sources) {
                 continue;
             }
 
-            if (Array.isArray(value)) {
-                options[key] = value.map((item) => {
-                    return item && typeof item === 'object' ? mergeOptions(item) : item;
-                });
-            } else if (value && typeof value === 'object') {
-                options[key] = mergeOptions(options[key], value);
+            if (isPlainObject(value)) {
+                const current = isPlainObject(options[key]) ? options[key] : {};
+
+                options[key] = mergeOptions(current, value);
             } else {
-                options[key] = value;
+                options[key] = cloneOption(value);
             }
         }
     }
 
     return options;
-}
-
-/**
- * Freezes a copied options tree without freezing caller-owned callbacks.
- * @param {object} options The copied options.
- * @returns {object} The frozen options.
- */
-export function freezeOptions(options) {
-    for (const value of Object.values(options)) {
-        if (value && typeof value === 'object') {
-            freezeOptions(value);
-        }
-    }
-
-    return Object.freeze(options);
 }
 
 /**
@@ -70,6 +100,7 @@ function normalizeFont(font, defaults) {
  * @param {ChartOptions} options The merged chart options.
  * @param {ChartOptions} defaults The component defaults.
  * @returns {ChartOptions} The normalized options.
+ * @throws {TypeError} When the chart type is unsupported.
  */
 export function normalizeOptions(options, defaults) {
     if (!['bar', 'line', 'area', 'pie', 'donut', 'scatter', 'polarArea', 'radar'].includes(options.type)) {

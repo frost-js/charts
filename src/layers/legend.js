@@ -1,5 +1,5 @@
 /** @import { ChartLegendOptions } from '../chart.js'; */
-/** @import { ChartDataset } from '../data.js'; */
+/** @import { NormalizedChartDataset } from '../data.js'; */
 /** @import { ChartTextMetrics } from '../helpers.js'; */
 /** @import Rect from '../rect.js'; */
 /** @import { LayerLayoutCallback } from './layer.js'; */
@@ -7,7 +7,7 @@
 import { measureText, updateFont, wrapLines } from '../helpers.js';
 import Layer from './layer.js';
 
-/** @typedef {ChartDataset & {label: string, datasetIndex: number, index?: number, visible: boolean}} LegendItem */
+/** @typedef {NormalizedChartDataset & {datasetIndex: number, index?: number, visible: boolean}} LegendItem */
 
 /**
  * @typedef {object} LegendLabel

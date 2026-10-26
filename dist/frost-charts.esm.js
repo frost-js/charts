@@ -90,17 +90,32 @@ function wrapLines(context, text, maxWidth) {
 /**
 * @typedef {object} ChartDataset
 * @property {string} [label] The dataset label.
-* @property {Array<number|{x: number, y: number}>} data Values, or numeric x/y points for scatter charts.
+* @property {Array<number|string|{x: number|string, y: number|string}>} data Values or scatter points; numeric strings are accepted.
 * @property {string|string[]} [backgroundColor] The fill color or repeating colors.
 * @property {string|string[]} [borderColor] The border color or repeating colors.
-* @property {number} [borderWidth=1] The border width in CSS pixels.
-* @property {number} [pointRadius=2] The point radius in CSS pixels; scatter defaults to 4.
-* @property {number} [fillOpacity=.2] The area or radar fill opacity; polar area defaults to .75.
+* @property {number|string} [borderWidth=1] The border width in CSS pixels.
+* @property {number|string} [pointRadius=2] The point radius in CSS pixels; scatter defaults to 4.
+* @property {number|string} [fillOpacity=.2] The area or radar fill opacity; polar area defaults to .75.
 */
 /**
 * @typedef {object} ChartData
 * @property {Array<string|number>} [labels] Category labels; optional point labels for scatter charts.
 * @property {ChartDataset[]} datasets The chart datasets.
+*/
+/**
+* @typedef {object} NormalizedChartDataset
+* @property {string} label The resolved dataset label.
+* @property {Array<number|{x: number, y: number}>} data Finite values or scatter coordinates.
+* @property {string[]} backgroundColor The nonempty fill palette.
+* @property {string[]} borderColor The nonempty border palette.
+* @property {number} borderWidth The nonnegative border width in CSS pixels.
+* @property {number} pointRadius The nonnegative point radius in CSS pixels.
+* @property {number} fillOpacity The fill opacity between zero and one.
+*/
+/**
+* @typedef {object} NormalizedChartData
+* @property {string[]} labels The resolved category or point labels.
+* @property {NormalizedChartDataset[]} datasets The normalized datasets.
 */
 var defaultColors = [
 	"#6366f1",
@@ -117,10 +132,30 @@ var defaultColors = [
 	"#64748b"
 ];
 /**
+* Formats a numeric value or scatter coordinates for tooltips and descriptions.
+* @param {number|{x: number, y: number}} value The data value.
+* @returns {string} The readable value.
+*/
+function formatValue(value) {
+	return typeof value === "object" ? `(${value.x}, ${value.y})` : String(value);
+}
+/**
+* Gets a dataset color, repeating its palette when necessary.
+* @param {NormalizedChartDataset} dataset The normalized dataset.
+* @param {'backgroundColor'|'borderColor'} property The color property.
+* @param {number} index The value index.
+* @returns {string} The color for this value.
+*/
+function getColor(dataset, property, index) {
+	const colors = dataset[property];
+	return colors[index % colors.length];
+}
+/**
 * Copies a color or color array into a validated, nonempty array.
 * @param {string|string[]} colors The supplied colors.
 * @param {string} name The property name used in validation errors.
 * @returns {string[]} The copied colors.
+* @throws {TypeError} When the palette is empty or contains invalid color values.
 */
 function normalizeColors(colors, name) {
 	const values = Array.isArray(colors) ? Array.from(colors) : [colors];
@@ -129,33 +164,36 @@ function normalizeColors(colors, name) {
 	return values;
 }
 /**
-* Copies finite numbers or scatter coordinates into an independent data array.
-* @param {Array<number|string|{x: number|string, y: number|string}>} data The supplied values or points.
+* Validates chart data and copies its labels, values, and colors.
+* @param {ChartData} data The supplied chart data.
 * @param {string} type The chart type.
-* @param {number} index The dataset index used in errors.
-* @returns {Array<number|{x: number, y: number}>} The validated values or points.
+* @param {boolean} [stacked=false] Whether bar values will be summed.
+* @returns {NormalizedChartData} The independent, normalized chart data.
+* @throws {TypeError} When labels, datasets, values, or colors are invalid.
+* @throws {RangeError} When label counts differ, circular or radial values are negative, or stack totals overflow.
 */
-function normalizeValues(data, type, index) {
-	return Array.from(data, (value) => {
-		if (type === "scatter") {
-			const x = parseNumber(value?.x, NaN);
-			const y = parseNumber(value?.y, NaN);
-			if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`Dataset ${index} points must have finite x and y coordinates.`);
-			return {
-				x,
-				y
-			};
-		}
-		value = parseNumber(value, NaN);
-		if (!Number.isFinite(value)) throw new TypeError(`Dataset ${index} values must be finite numbers.`);
-		if ([
-			"pie",
-			"donut",
-			"polarArea",
-			"radar"
-		].includes(type) && value < 0) throw new RangeError(`Dataset ${index} circular and radial values must be nonnegative.`);
-		return value;
+function normalizeData(data, type, stacked = false) {
+	if (!data || !Array.isArray(data.datasets)) throw new TypeError("Chart data requires a datasets array.");
+	const inputLabels = type === "scatter" ? data.labels ?? [] : data.labels;
+	if (!Array.isArray(inputLabels)) throw new TypeError("Chart labels must be an array.");
+	const labels = Array.from(inputLabels, (label) => String(label));
+	const datasets = Array.from(data.datasets, (dataset, index) => {
+		return normalizeDataset(dataset, index, labels.length, type);
 	});
+	if (type === "bar" && stacked) for (let index = 0; index < labels.length; index++) {
+		let positive = 0;
+		let negative = 0;
+		for (const dataset of datasets) {
+			const value = dataset.data[index];
+			if (value < 0) negative += value;
+			else positive += value;
+		}
+		if (!Number.isFinite(positive) || !Number.isFinite(negative)) throw new RangeError("Stack totals must be finite numbers.");
+	}
+	return {
+		labels,
+		datasets
+	};
 }
 /**
 * Validates and copies one dataset without modifying the caller's data.
@@ -163,7 +201,9 @@ function normalizeValues(data, type, index) {
 * @param {number} index The dataset index.
 * @param {number} labelCount The required number of values.
 * @param {string} type The chart type.
-* @returns {ChartDataset} The normalized dataset.
+* @returns {NormalizedChartDataset} The normalized dataset.
+* @throws {TypeError} When the data array, values, or colors are invalid.
+* @throws {RangeError} When label counts differ or circular or radial values are negative.
 */
 function normalizeDataset(dataset, index, labelCount, type) {
 	if (!dataset || !Array.isArray(dataset.data)) throw new TypeError(`Dataset ${index} requires a data array.`);
@@ -191,53 +231,35 @@ function normalizeDataset(dataset, index, labelCount, type) {
 	};
 }
 /**
-* Validates chart data and copies its labels, values, and colors.
-* @param {ChartData} data The supplied chart data.
+* Copies finite numbers or scatter coordinates into an independent data array.
+* @param {ChartDataset['data']} data The supplied values or points.
 * @param {string} type The chart type.
-* @param {boolean} [stacked=false] Whether bar values will be summed.
-* @returns {ChartData} The independent, normalized chart data.
+* @param {number} index The dataset index used in errors.
+* @returns {NormalizedChartDataset['data']} The validated values or points.
+* @throws {TypeError} When values or scatter coordinates are not finite numbers.
+* @throws {RangeError} When a circular or radial chart contains negative values.
 */
-function normalizeData(data, type, stacked = false) {
-	if (!data || !Array.isArray(data.datasets)) throw new TypeError("Chart data requires a datasets array.");
-	const inputLabels = type === "scatter" ? data.labels ?? [] : data.labels;
-	if (!Array.isArray(inputLabels)) throw new TypeError("Chart labels must be an array.");
-	const labels = Array.from(inputLabels, (label) => String(label));
-	const datasets = Array.from(data.datasets, (dataset, index) => {
-		return normalizeDataset(dataset, index, labels.length, type);
-	});
-	if (type === "bar" && stacked) for (let index = 0; index < labels.length; index++) {
-		let positive = 0;
-		let negative = 0;
-		for (const dataset of datasets) {
-			const value = dataset.data[index];
-			if (value < 0) negative += value;
-			else positive += value;
+function normalizeValues(data, type, index) {
+	return Array.from(data, (value) => {
+		if (type === "scatter") {
+			const x = parseNumber(value?.x, NaN);
+			const y = parseNumber(value?.y, NaN);
+			if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`Dataset ${index} points must have finite x and y coordinates.`);
+			return {
+				x,
+				y
+			};
 		}
-		if (!Number.isFinite(positive) || !Number.isFinite(negative)) throw new RangeError("Stack totals must be finite numbers.");
-	}
-	return {
-		labels,
-		datasets
-	};
-}
-/**
-* Gets a dataset color, repeating its palette when necessary.
-* @param {ChartDataset} dataset The normalized dataset.
-* @param {string} property The color property.
-* @param {number} index The value index.
-* @returns {string} The color for this value.
-*/
-function getColor(dataset, property, index) {
-	const colors = dataset[property];
-	return colors[index % colors.length];
-}
-/**
-* Formats a numeric value or scatter coordinates for tooltips and descriptions.
-* @param {number|{x: number, y: number}} value The data value.
-* @returns {string} The readable value.
-*/
-function formatValue(value) {
-	return typeof value === "object" ? `(${value.x}, ${value.y})` : String(value);
+		value = parseNumber(value, NaN);
+		if (!Number.isFinite(value)) throw new TypeError(`Dataset ${index} values must be finite numbers.`);
+		if ([
+			"pie",
+			"donut",
+			"polarArea",
+			"radar"
+		].includes(type) && value < 0) throw new RangeError(`Dataset ${index} circular and radial values must be nonnegative.`);
+		return value;
+	});
 }
 
 // src/layers/layer.js
@@ -1574,11 +1596,11 @@ var LabelsY = class extends Layer {
 
 // src/layers/legend.js
 /** @import { ChartLegendOptions } from '../chart.js'; */
-/** @import { ChartDataset } from '../data.js'; */
+/** @import { NormalizedChartDataset } from '../data.js'; */
 /** @import { ChartTextMetrics } from '../helpers.js'; */
 /** @import Rect from '../rect.js'; */
 /** @import { LayerLayoutCallback } from './layer.js'; */
-/** @typedef {ChartDataset & {label: string, datasetIndex: number, index?: number, visible: boolean}} LegendItem */
+/** @typedef {NormalizedChartDataset & {datasetIndex: number, index?: number, visible: boolean}} LegendItem */
 /**
 * @typedef {object} LegendLabel
 * @property {LegendItem} dataset The dataset or slice represented by the entry.
@@ -2343,6 +2365,35 @@ var Tooltip = class extends Layer {
 // src/options.js
 /** @import { ChartFont, ChartOptions } from './chart.js'; */
 /**
+* Copies nested arrays and plain objects, preserving other values by reference.
+* @param {*} value The option value.
+* @returns {*} The copied array or plain object, or the original value.
+*/
+function cloneOption(value) {
+	if (Array.isArray(value)) return value.map((item) => cloneOption(item));
+	return isPlainObject(value) ? mergeOptions(value) : value;
+}
+/**
+* Freezes copied arrays and plain objects without freezing caller-owned values.
+* @param {object} options The copied options.
+* @returns {object} The frozen options.
+*/
+function freezeOptions(options) {
+	if (!Array.isArray(options) && !isPlainObject(options)) return options;
+	for (const value of Object.values(options)) if (Array.isArray(value) || isPlainObject(value)) freezeOptions(value);
+	return Object.freeze(options);
+}
+/**
+* Checks for a plain object, including objects from another realm.
+* @param {*} value The value to check.
+* @returns {boolean} Whether the value is a plain object.
+*/
+function isPlainObject(value) {
+	if (!value || typeof value !== "object") return false;
+	const prototype = Object.getPrototypeOf(value);
+	return prototype === null || Object.getPrototypeOf(prototype) === null;
+}
+/**
 * Merges option objects, cloning arrays instead of merging their entries.
 * @param {...object} sources The option sources in precedence order.
 * @returns {object} The merged options.
@@ -2357,23 +2408,11 @@ function mergeOptions(...sources) {
 				"constructor",
 				"prototype"
 			].includes(key)) continue;
-			if (Array.isArray(value)) options[key] = value.map((item) => {
-				return item && typeof item === "object" ? mergeOptions(item) : item;
-			});
-			else if (value && typeof value === "object") options[key] = mergeOptions(options[key], value);
-			else options[key] = value;
+			if (isPlainObject(value)) options[key] = mergeOptions(isPlainObject(options[key]) ? options[key] : {}, value);
+			else options[key] = cloneOption(value);
 		}
 	}
 	return options;
-}
-/**
-* Freezes a copied options tree without freezing caller-owned callbacks.
-* @param {object} options The copied options.
-* @returns {object} The frozen options.
-*/
-function freezeOptions(options) {
-	for (const value of Object.values(options)) if (value && typeof value === "object") freezeOptions(value);
-	return Object.freeze(options);
 }
 /**
 * Resolves an inherited font and normalizes its dimensions.
@@ -2392,6 +2431,7 @@ function normalizeFont(font, defaults) {
 * @param {ChartOptions} options The merged chart options.
 * @param {ChartOptions} defaults The component defaults.
 * @returns {ChartOptions} The normalized options.
+* @throws {TypeError} When the chart type is unsupported.
 */
 function normalizeOptions(options, defaults) {
 	if (![
@@ -2521,7 +2561,7 @@ var Rect = class Rect {
 };
 
 // src/chart.js
-/** @import { ChartData, ChartDataset } from './data.js'; */
+/** @import { ChartData, NormalizedChartData, NormalizedChartDataset } from './data.js'; */
 /** @import { ChartMark } from './layers/layer.js'; */
 /** @import { LegendItem } from './layers/legend.js'; */
 /**
@@ -2656,9 +2696,7 @@ var Rect = class Rect {
 var Chart = class Chart {
 	static Area = LineChart;
 	static Bar = BarChart;
-	/**
-	* @type {ChartOptions}
-	*/
+	/** @type {ChartOptions} */
 	static defaults = {
 		type: "bar",
 		orientation: "vertical",
@@ -2823,6 +2861,9 @@ var Chart = class Chart {
 	* @param {HTMLElement} node The chart container.
 	* @param {ChartOptions} [options] The options for a new chart.
 	* @returns {Chart} The existing or newly created chart.
+	* @throws {TypeError} When the container, chart type, or data format is invalid.
+	* @throws {RangeError} When data counts, signs, or stack totals are invalid.
+	* @throws {Error} When a canvas 2D context is unavailable.
 	*/
 	static init(node, options) {
 		return Chart.#instances.get(node) || new this(node, options);
@@ -2831,7 +2872,9 @@ var Chart = class Chart {
 	* Creates a Chart in an HTML container.
 	* @param {HTMLElement} node The chart container.
 	* @param {ChartOptions} [options] The chart options.
-	* @throws {TypeError} When the node, options, or data are invalid.
+	* @throws {TypeError} When the container, chart type, or data format is invalid.
+	* @throws {RangeError} When data counts, signs, or stack totals are invalid.
+	* @throws {Error} When the container already has a chart or a canvas 2D context is unavailable.
 	*/
 	constructor(node, options) {
 		const view = node?.ownerDocument?.defaultView;
@@ -2870,8 +2913,8 @@ var Chart = class Chart {
 		return this.#node;
 	}
 	/**
-	* Gets the deeply frozen snapshot of the effective options and current data.
-	* @returns {Readonly<ChartOptions>|null} The options, or null after disposal.
+	* Gets the options snapshot with copied arrays and plain objects frozen.
+	* @returns {Readonly<ChartOptions & {data: NormalizedChartData}>|null} The options, or null after disposal.
 	*/
 	get options() {
 		return this.#options;
@@ -2955,7 +2998,7 @@ var Chart = class Chart {
 	}
 	/**
 	* Gets independent copies of the normalized datasets.
-	* @returns {ChartDataset[]} The datasets.
+	* @returns {NormalizedChartDataset[]} The datasets.
 	*/
 	getData() {
 		return this.#data ? mergeOptions(this.#data).datasets : [];
@@ -3093,6 +3136,8 @@ var Chart = class Chart {
 	/**
 	* Replaces chart data after validating the entire update.
 	* @param {ChartData} [data] The new data; defaults to the current data.
+	* @throws {TypeError} When labels, datasets, values, or colors are invalid.
+	* @throws {RangeError} When label counts differ, circular or radial values are negative, or stack totals overflow.
 	*/
 	setData(data = this.#data) {
 		if (!this.node) return;
@@ -3133,6 +3178,8 @@ var Chart = class Chart {
 	/**
 	* Merges changed settings and rebuilds the affected layers.
 	* @param {ChartOptions} [settings={}] The changed settings.
+	* @throws {TypeError} When the chart type or data format is invalid.
+	* @throws {RangeError} When the data is invalid for the new chart type or stacking mode.
 	*/
 	setSettings(settings = {}) {
 		if (!this.node) return;

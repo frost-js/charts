@@ -1,4 +1,4 @@
-/** @import { ChartData, ChartDataset } from './data.js'; */
+/** @import { ChartData, NormalizedChartData, NormalizedChartDataset } from './data.js'; */
 /** @import { ChartMark } from './layers/layer.js'; */
 /** @import { LegendItem } from './layers/legend.js'; */
 
@@ -169,9 +169,7 @@ import { createScale } from './scale.js';
 export default class Chart {
     static Area = LineChart;
     static Bar = BarChart;
-    /**
-     * @type {ChartOptions}
-     */
+    /** @type {ChartOptions} */
     static defaults = {
         type: 'bar',
         orientation: 'vertical',
@@ -341,6 +339,9 @@ export default class Chart {
      * @param {HTMLElement} node The chart container.
      * @param {ChartOptions} [options] The options for a new chart.
      * @returns {Chart} The existing or newly created chart.
+     * @throws {TypeError} When the container, chart type, or data format is invalid.
+     * @throws {RangeError} When data counts, signs, or stack totals are invalid.
+     * @throws {Error} When a canvas 2D context is unavailable.
      */
     static init(node, options) {
         return Chart.#instances.get(node) || new this(node, options);
@@ -350,7 +351,9 @@ export default class Chart {
      * Creates a Chart in an HTML container.
      * @param {HTMLElement} node The chart container.
      * @param {ChartOptions} [options] The chart options.
-     * @throws {TypeError} When the node, options, or data are invalid.
+     * @throws {TypeError} When the container, chart type, or data format is invalid.
+     * @throws {RangeError} When data counts, signs, or stack totals are invalid.
+     * @throws {Error} When the container already has a chart or a canvas 2D context is unavailable.
      */
     constructor(node, options) {
         const view = node?.ownerDocument?.defaultView;
@@ -407,8 +410,8 @@ export default class Chart {
     }
 
     /**
-     * Gets the deeply frozen snapshot of the effective options and current data.
-     * @returns {Readonly<ChartOptions>|null} The options, or null after disposal.
+     * Gets the options snapshot with copied arrays and plain objects frozen.
+     * @returns {Readonly<ChartOptions & {data: NormalizedChartData}>|null} The options, or null after disposal.
      */
     get options() {
         return this.#options;
@@ -532,7 +535,7 @@ export default class Chart {
 
     /**
      * Gets independent copies of the normalized datasets.
-     * @returns {ChartDataset[]} The datasets.
+     * @returns {NormalizedChartDataset[]} The datasets.
      */
     getData() {
         return this.#data ? mergeOptions(this.#data).datasets : [];
@@ -725,6 +728,8 @@ export default class Chart {
     /**
      * Replaces chart data after validating the entire update.
      * @param {ChartData} [data] The new data; defaults to the current data.
+     * @throws {TypeError} When labels, datasets, values, or colors are invalid.
+     * @throws {RangeError} When label counts differ, circular or radial values are negative, or stack totals overflow.
      */
     setData(data = this.#data) {
         if (!this.node) {
@@ -783,6 +788,8 @@ export default class Chart {
     /**
      * Merges changed settings and rebuilds the affected layers.
      * @param {ChartOptions} [settings={}] The changed settings.
+     * @throws {TypeError} When the chart type or data format is invalid.
+     * @throws {RangeError} When the data is invalid for the new chart type or stacking mode.
      */
     setSettings(settings = {}) {
         if (!this.node) {

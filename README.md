@@ -78,7 +78,7 @@ Scatter datasets accept finite `{ x, y }` points. Labels are optional, datasets 
 
 The default palette starts with indigo, teal, amber, and pink and contains twelve colors. Cartesian and radar series receive one color per dataset; pie, donut, and polar area slices cycle through the palette. Explicit dataset colors override the defaults. Grid lines use a soft gray, axis borders a slightly darker gray, and ticks inherit their grid color unless `tickColor` is supplied.
 
-Inputs and data getter results are copied. Changing the original data object does not change a chart; call `setData` to apply an update. `chart.options` is a deeply frozen snapshot, reused until data or settings change. Invalid data and unsupported chart types are rejected before replacing the current state.
+Inputs and data getter results are copied. Changing the original data object does not change a chart; call `setData` to apply an update. `chart.options` is a snapshot reused until data or settings change. Its copied arrays and plain objects are frozen; callbacks, dates, and class instances retain their original references and are not frozen. Invalid data and unsupported chart types are rejected before replacing the current state.
 
 Numeric strings are accepted for values, coordinates, and numeric settings. Invalid numeric settings fall back to defaults; negative dimensions clamp to zero, and fill opacity clamps to the range 0–1. Invalid font sizes and donut cutouts use their defaults.
 

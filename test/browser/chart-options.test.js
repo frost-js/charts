@@ -4,6 +4,94 @@ import { setupChart } from '../setup/chart.js';
 test.describe('Chart options', () => {
     test.beforeEach(setupChart);
 
+    test.describe('option merging', () => {
+        test('copies nested arrays and plain objects without freezing caller data', async ({ page }) => {
+            const input = await page.evaluateHandle(() => {
+                const custom = [[1, 2], [{ value: 3 }]];
+
+                window.makeChart({ custom });
+                custom[0].push(4);
+                custom[1][0].value = 5;
+
+                return custom;
+            });
+
+            expect(await page.evaluate(() => window.chart.options.custom)).toEqual([[1, 2], [{ value: 3 }]]);
+            expect(await input.evaluate((custom) => Object.isFrozen(custom[1][0]))).toBe(false);
+            expect(await page.evaluate(() => Object.isFrozen(window.chart.options.custom[1][0]))).toBe(true);
+        });
+
+        test('replaces arrays instead of retaining entries from the previous value', async ({ page }) => {
+            await page.evaluate(() => {
+                window.makeChart({ custom: [[1, 2], [3, 4]] });
+                window.chart.setSettings({ custom: [[5]] });
+            });
+
+            expect(await page.evaluate(() => window.chart.options.custom)).toEqual([[5]]);
+        });
+
+        test('merges nested plain objects without dropping existing properties', async ({ page }) => {
+            await page.evaluate(() => {
+                window.makeChart({ custom: { nested: { first: 1, second: 2 } } });
+                window.chart.setSettings({ custom: { nested: { second: 3 } } });
+            });
+
+            expect(await page.evaluate(() => window.chart.options.custom.nested.first)).toBe(1);
+            expect(await page.evaluate(() => window.chart.options.custom.nested.second)).toBe(3);
+        });
+
+        test('copies plain objects without a prototype', async ({ page }) => {
+            await page.evaluate(() => {
+                const custom = Object.create(null);
+
+                custom.value = 1;
+                window.makeChart({ custom });
+                custom.value = 2;
+            });
+
+            expect(await page.evaluate(() => window.chart.options.custom.value)).toBe(1);
+        });
+
+        for (const type of ['date', 'class instance']) {
+            test(`preserves a ${type} by reference without freezing it`, async ({ page }) => {
+                const value = await page.evaluateHandle((type) => {
+                    class Formatter {
+                        format() {
+                            return 'Formatted';
+                        }
+                    }
+
+                    const value = type === 'date' ? new Date('2026-01-01T00:00:00Z') : new Formatter();
+
+                    window.makeChart({ custom: { value, entries: [value] } });
+                    window.chart.setSettings({ title: { text: 'Updated' } });
+
+                    return value;
+                }, type);
+
+                expect(await value.evaluate((value) => window.chart.options.custom.value === value)).toBe(true);
+                expect(await value.evaluate((value) => window.chart.options.custom.entries[0] === value)).toBe(true);
+                expect(await value.evaluate((value) => Object.isFrozen(value))).toBe(false);
+                expect(await page.evaluate(() => Object.isFrozen(window.chart.options.custom.entries))).toBe(true);
+            });
+        }
+
+        for (const { name, value } of [
+            { name: 'a string', value: 'red' },
+            { name: 'an array', value: ['red'] },
+        ]) {
+            test(`replaces ${name} with a plain object without retaining indexed properties`, async ({ page }) => {
+                await page.evaluate((value) => {
+                    window.makeChart({ custom: value });
+                    window.chart.setSettings({ custom: { value: 1 } });
+                }, value);
+
+                expect(await page.evaluate(() => Object.keys(window.chart.options.custom))).toEqual(['value']);
+                expect(await page.evaluate(() => window.chart.options.custom.value)).toBe(1);
+            });
+        }
+    });
+
     test.describe('font option', () => {
         test('normalizes numeric strings in inherited fonts', async ({ page }) => {
             await page.evaluate(() => window.makeChart({ font: { size: '16', lineHeight: '1.5' } }));
