@@ -2135,66 +2135,37 @@ var Title = class extends Layer {
 		updateFont(this.context, this.settings.font);
 		this.context.textAlign = this.settings.align === "start" ? "left" : this.settings.align;
 		this.context.fillStyle = this.settings.color;
-		let x = 0;
-		let y = 0;
-		switch (this.settings.position) {
-			case "top":
-			case "bottom":
-				switch (this.settings.align) {
-					case "center":
-						x = this.rect.width / 2;
-						break;
-					case "end":
-					case "right": x = this.rect.width;
-				}
+		const vertical = ["right", "left"].includes(this.settings.position);
+		const length = vertical ? this.rect.height : this.rect.width;
+		let offset = 0;
+		switch (this.settings.align) {
+			case "center":
+				offset = length / 2;
 				break;
-			case "right": x = this.rect.width;
+			case "start":
+			case "left":
+				offset = vertical ? length : 0;
+				break;
+			case "end":
+			case "right": offset = vertical ? 0 : length;
 		}
+		this.context.save();
 		switch (this.settings.position) {
 			case "right":
-			case "left": switch (this.settings.align) {
-				case "center":
-					y = this.rect.height / 2;
-					break;
-				case "start":
-				case "left": y = this.rect.height;
-			}
+				this.context.translate(this.rect.width, offset);
+				this.context.rotate(Math.PI / 2);
+				break;
+			case "left":
+				this.context.translate(0, offset);
+				this.context.rotate(-Math.PI / 2);
+				break;
+			default: this.context.translate(offset, 0);
 		}
 		for (const [i, line] of this.#lines.entries()) {
 			const { fontBoundingBoxAscent: ascent } = this.#metrics[i];
-			let lineX = x;
-			let lineY = y;
-			switch (this.settings.position) {
-				case "top":
-				case "bottom":
-					lineY += ascent;
-					break;
-				case "right":
-					lineX -= ascent;
-					break;
-				case "left": lineX += ascent;
-			}
-			this.context.save();
-			this.context.translate(lineX, lineY);
-			switch (this.settings.position) {
-				case "right":
-					this.context.rotate(Math.PI / 2);
-					break;
-				case "left": this.context.rotate(-Math.PI / 2);
-			}
-			this.context.fillText(line, 0, 0);
-			this.context.restore();
-			switch (this.settings.position) {
-				case "top":
-				case "bottom":
-					y += this.#lineHeight;
-					break;
-				case "right":
-					x -= this.#lineHeight;
-					break;
-				case "left": x += this.#lineHeight;
-			}
+			this.context.fillText(line, 0, ascent + i * this.#lineHeight);
 		}
+		this.context.restore();
 	}
 };
 
@@ -2338,29 +2309,28 @@ var Tooltip = class extends Layer {
 				y: anchorY - height / 2
 			}
 		};
-		const sides = [
+		const sides = preferred === "top" || preferred === "bottom" ? [
+			preferred,
+			opposite[preferred],
+			"right",
+			"left"
+		] : [
 			preferred,
 			opposite[preferred],
 			"top",
-			"bottom",
-			"right",
-			"left"
+			"bottom"
 		];
 		const maxX = this.canvasRect.width - width;
 		const maxY = this.canvasRect.height - height;
-		for (const side of sides) {
+		const side = sides.find((side) => {
 			const candidate = candidates[side];
-			if (side === "top" || side === "bottom" ? candidate.y >= 0 && candidate.y <= maxY : candidate.x >= 0 && candidate.x <= maxX) return {
-				x: Math.max(0, Math.min(candidate.x, maxX)),
-				y: Math.max(0, Math.min(candidate.y, maxY)),
-				side
-			};
-		}
-		const candidate = candidates[preferred];
+			return side === "top" || side === "bottom" ? candidate.y >= 0 && candidate.y <= maxY : candidate.x >= 0 && candidate.x <= maxX;
+		}) || preferred;
+		const candidate = candidates[side];
 		return {
 			x: Math.max(0, Math.min(candidate.x, maxX)),
 			y: Math.max(0, Math.min(candidate.y, maxY)),
-			side: preferred
+			side
 		};
 	}
 };

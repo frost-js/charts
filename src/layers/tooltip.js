@@ -141,33 +141,27 @@ export default class Tooltip extends Layer {
             right: { x: anchorX + gap, y: anchorY - height / 2 },
             left: { x: anchorX - width - gap, y: anchorY - height / 2 },
         };
-        const sides = [preferred, opposite[preferred], 'top', 'bottom', 'right', 'left'];
+        const sides = preferred === 'top' || preferred === 'bottom' ?
+            [preferred, opposite[preferred], 'right', 'left'] :
+            [preferred, opposite[preferred], 'top', 'bottom'];
         const maxX = this.canvasRect.width - width;
         const maxY = this.canvasRect.height - height;
 
-        // Clamping along the edge keeps the tooltip near its mark even at corners.
-        for (const side of sides) {
+        const side = sides.find((side) => {
             const candidate = candidates[side];
             const vertical = side === 'top' || side === 'bottom';
-            const fits = vertical ?
+
+            return vertical ?
                 candidate.y >= 0 && candidate.y <= maxY :
                 candidate.x >= 0 && candidate.x <= maxX;
+        }) || preferred;
+        const candidate = candidates[side];
 
-            if (fits) {
-                return {
-                    x: Math.max(0, Math.min(candidate.x, maxX)),
-                    y: Math.max(0, Math.min(candidate.y, maxY)),
-                    side,
-                };
-            }
-        }
-
-        const candidate = candidates[preferred];
-
+        // Clamping along the edge keeps the tooltip near its mark even at corners.
         return {
             x: Math.max(0, Math.min(candidate.x, maxX)),
             y: Math.max(0, Math.min(candidate.y, maxY)),
-            side: preferred,
+            side,
         };
     }
 }

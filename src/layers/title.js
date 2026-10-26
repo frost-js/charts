@@ -86,88 +86,48 @@ export default class Title extends Layer {
         this.context.textAlign = this.settings.align === 'start' ? 'left' : this.settings.align;
         this.context.fillStyle = this.settings.color;
 
-        let x = 0;
-        let y = 0;
+        const vertical = ['right', 'left'].includes(this.settings.position);
+        const length = vertical ? this.rect.height : this.rect.width;
 
-        switch (this.settings.position) {
-            case 'top':
-            case 'bottom':
-                switch (this.settings.align) {
-                    case 'center':
-                        x = this.rect.width / 2;
-                        break;
-                    case 'end':
-                    case 'right':
-                        x = this.rect.width;
-                        break;
-                }
+        let offset = 0;
+
+        switch (this.settings.align) {
+            case 'center':
+                offset = length / 2;
                 break;
+            case 'start':
+            case 'left':
+                offset = vertical ? length : 0;
+                break;
+            case 'end':
             case 'right':
-                x = this.rect.width;
+                offset = vertical ? 0 : length;
                 break;
         }
 
+        this.context.save();
+
+        // Position and rotate the title once, then advance lines along its local y axis.
         switch (this.settings.position) {
             case 'right':
+                this.context.translate(this.rect.width, offset);
+                this.context.rotate(Math.PI / 2);
+                break;
             case 'left':
-                switch (this.settings.align) {
-                    case 'center':
-                        y = this.rect.height / 2;
-                        break;
-                    case 'start':
-                    case 'left':
-                        y = this.rect.height;
-                        break;
-                }
+                this.context.translate(0, offset);
+                this.context.rotate(-Math.PI / 2);
+                break;
+            default:
+                this.context.translate(offset, 0);
                 break;
         }
 
         for (const [i, line] of this.#lines.entries()) {
             const { fontBoundingBoxAscent: ascent } = this.#metrics[i];
 
-            let lineX = x;
-            let lineY = y;
-
-            switch (this.settings.position) {
-                case 'top':
-                case 'bottom':
-                    lineY += ascent;
-                    break;
-                case 'right':
-                    lineX -= ascent;
-                    break;
-                case 'left':
-                    lineX += ascent;
-                    break;
-            }
-
-            this.context.save();
-            this.context.translate(lineX, lineY);
-
-            switch (this.settings.position) {
-                case 'right':
-                    this.context.rotate(Math.PI / 2);
-                    break;
-                case 'left':
-                    this.context.rotate(-Math.PI / 2);
-                    break;
-            }
-
-            this.context.fillText(line, 0, 0);
-            this.context.restore();
-
-            switch (this.settings.position) {
-                case 'top':
-                case 'bottom':
-                    y += this.#lineHeight;
-                    break;
-                case 'right':
-                    x -= this.#lineHeight;
-                    break;
-                case 'left':
-                    x += this.#lineHeight;
-                    break;
-            }
+            this.context.fillText(line, 0, ascent + i * this.#lineHeight);
         }
+
+        this.context.restore();
     }
 }
