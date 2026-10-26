@@ -1,9 +1,29 @@
+/** @import { ChartScaleOptions } from '../chart.js'; */
+
 import { getColor } from '../data.js';
 import Layer from '../layers/layer.js';
 import { getScalePosition } from '../scale.js';
 
 /**
+ * @typedef {object} BarGeometry
+ * @property {number} x The local left edge.
+ * @property {number} y The local top edge.
+ * @property {number} width The bar width.
+ * @property {number} height The bar height.
+ * @property {number} end The value end along the numeric axis.
+ * @property {string} backgroundColor The fill color.
+ * @property {string} borderColor The border color.
+ * @property {number} borderWidth The border width in CSS pixels.
+ * @property {string} label The category label.
+ * @property {string} datasetLabel The dataset label.
+ * @property {number} datasetIndex The dataset index.
+ * @property {number} index The category index.
+ * @property {number} value The data value.
+ */
+
+/**
  * Renders grouped or stacked bars in either orientation.
+ * @augments {Layer<ChartScaleOptions, BarGeometry>}
  */
 export default class BarChart extends Layer {
     #baseline = 0;
@@ -19,7 +39,9 @@ export default class BarChart extends Layer {
         const { orientation, stacked } = this.chart.options;
         const labels = this.chart.getLabels();
         const datasets = this.chart.getData();
-        const visible = datasets.map((dataset, index) => index).filter((index) => this.chart.isDatasetVisible(index));
+        const visible = datasets
+            .map((dataset, index) => index)
+            .filter((index) => this.chart.isDatasetVisible(index));
 
         this.#horizontal = orientation === 'horizontal';
 
@@ -28,7 +50,8 @@ export default class BarChart extends Layer {
         const groupSize = categorySize / Math.max(1, labels.length);
         const count = stacked ? 1 : visible.length;
         const spacing = Math.min(5, groupSize / (count + 1) / 2);
-        const thickness = Math.max(0, (groupSize - spacing * (count + 1)) / Math.max(1, count));
+        const available = groupSize - spacing * (count + 1);
+        const thickness = Math.max(0, available / Math.max(1, count));
 
         const min = this.chart.getScaleMin();
         const max = this.chart.getScaleMax();
@@ -151,8 +174,8 @@ export default class BarChart extends Layer {
 
     /**
      * Collapses a bar to the current zero baseline while retaining its category.
-     * @param {object} item The bar geometry.
-     * @returns {object} The collapsed geometry.
+     * @param {BarGeometry} item The bar geometry.
+     * @returns {BarGeometry} The collapsed geometry.
      */
     #collapse(item) {
         const collapsed = { ...item, end: this.#baseline };

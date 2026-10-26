@@ -1,6 +1,6 @@
-/**
- * @import Rect from '../rect.js';
- */
+/** @import { ChartTickOptions } from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 
 import { measureText, updateFont } from '../helpers.js';
 import { getScalePosition } from '../scale.js';
@@ -8,6 +8,7 @@ import Layer from './layer.js';
 
 /**
  * Lays out category labels or numeric scatter ticks below the plot.
+ * @augments {Layer<ChartTickOptions>}
  */
 export default class LabelsX extends Layer {
     #gridWidth;
@@ -20,7 +21,7 @@ export default class LabelsX extends Layer {
     /**
      * Calculates the layer bounds before continuing layout.
      * @param {Rect} chartRect The remaining chart rectangle.
-     * @param {Function} next The next layout callback.
+     * @param {LayerLayoutCallback} next The next layout callback.
      */
     calculate(chartRect, next) {
         this.rect = chartRect.clone();
@@ -47,6 +48,7 @@ export default class LabelsX extends Layer {
         });
 
         this.#metrics = this.#labels.map((label) => measureText(this.context, label));
+
         const heights = this.#metrics.map((metric) => {
             return metric.fontBoundingBoxAscent + metric.fontBoundingBoxDescent;
         });

@@ -1,12 +1,13 @@
-/**
- * @import Rect from '../rect.js';
- */
+/** @import { ChartTitleOptions } from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 
 import { measureText, updateFont, wrapLines } from '../helpers.js';
 import Layer from './layer.js';
 
 /**
  * Lays out and renders the chart title along any edge.
+ * @augments {Layer<ChartTitleOptions>}
  */
 export default class Title extends Layer {
     #lineHeight;
@@ -16,7 +17,7 @@ export default class Title extends Layer {
     /**
      * Calculates the layer bounds before continuing layout.
      * @param {Rect} chartRect The remaining chart rectangle.
-     * @param {Function} next The next layout callback.
+     * @param {LayerLayoutCallback} next The next layout callback.
      */
     calculate(chartRect, next) {
         this.rect = chartRect.clone();
@@ -39,7 +40,8 @@ export default class Title extends Layer {
         this.#lineHeight = this.settings.font.lineHeight * this.settings.font.size;
 
         const available = ['right', 'left'].includes(this.settings.position) ?
-            chartRect.width : chartRect.height;
+            chartRect.width :
+            chartRect.height;
         const height = Math.min(this.#lines.length * this.#lineHeight, available / 2);
         const padding = Math.min(this.settings.padding, Math.max(0, available - height));
 

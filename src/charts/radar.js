@@ -1,9 +1,13 @@
+/** @import { ChartRadialAxisOptions } from '../chart.js'; */
+/** @import { ChartPoint } from '../layers/layer.js'; */
+
 import { getColor } from '../data.js';
 import Layer from '../layers/layer.js';
 import { getScalePosition } from '../scale.js';
 
 /**
  * Connects each dataset around shared radial category axes.
+ * @augments {Layer<ChartRadialAxisOptions, ChartPoint>}
  */
 export default class RadarChart extends Layer {
     #oldPoints = [];
@@ -118,7 +122,7 @@ export default class RadarChart extends Layer {
 
     /**
      * Connects the visible points into a closed polygon.
-     * @param {object[]} points The interpolated points.
+     * @param {ChartPoint[]} points The interpolated points.
      * @returns {Path2D} The polygon path.
      */
     #polygon(points) {
@@ -139,7 +143,7 @@ export default class RadarChart extends Layer {
 
     /**
      * Draws the polygon outline and interactive points.
-     * @param {object[]} points The interpolated points.
+     * @param {ChartPoint[]} points The interpolated points.
      */
     #renderSeries(points) {
         if (!points.length) {

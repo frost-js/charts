@@ -1,12 +1,13 @@
-/**
- * @import Rect from '../rect.js';
- */
+/** @import { ChartScaleOptions } from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 
 import { getScalePosition } from '../scale.js';
 import Layer from './layer.js';
 
 /**
  * Draws grid lines, axis borders, and ticks behind the data layer.
+ * @augments {Layer<ChartScaleOptions>}
  */
 export default class Grid extends Layer {
     #horizontal;
@@ -18,10 +19,11 @@ export default class Grid extends Layer {
     /**
      * Reserves tick space before calculating the plot.
      * @param {Rect} chartRect The remaining chart rectangle.
-     * @param {Function} next The next layout callback.
+     * @param {LayerLayoutCallback} next The next layout callback.
      */
     calculate(chartRect, next) {
         this.rect = chartRect.clone();
+
         const { type, orientation } = this.chart.options;
 
         this.#horizontal = type === 'bar' && orientation === 'horizontal';
@@ -45,7 +47,7 @@ export default class Grid extends Layer {
      * Keeps borders and ticks inside the offscreen drawing surface.
      */
     calculateCanvas() {
-        this.canvasRect = this.chart.outerRect.clone();
+        this.canvasRect = this.chart.outerRect;
     }
 
     /**
@@ -114,7 +116,7 @@ export default class Grid extends Layer {
     }
 
     /**
-     * Renders vertical grid lines at x categories.
+     * Renders vertical grid lines at x categories or numeric ticks.
      */
     #renderGridX() {
         const { display, grid } = this.settings.x;
@@ -131,7 +133,7 @@ export default class Grid extends Layer {
     }
 
     /**
-     * Renders horizontal grid lines at y scale ticks.
+     * Renders horizontal grid lines at y categories or numeric ticks.
      */
     #renderGridY() {
         const { display, grid } = this.settings.y;
@@ -195,7 +197,7 @@ export default class Grid extends Layer {
     }
 
     /**
-     * Gets a category's x coordinate.
+     * Gets the x coordinate of a category or numeric tick.
      * @param {number} index The category index.
      * @returns {number} The chart-local coordinate.
      */
@@ -217,7 +219,7 @@ export default class Grid extends Layer {
     }
 
     /**
-     * Gets a scale tick's y coordinate.
+     * Gets the y coordinate of a category or numeric tick.
      * @param {number} index The scale index.
      * @returns {number} The chart-local coordinate.
      */

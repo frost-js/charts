@@ -1,8 +1,12 @@
+/** @import { ChartScaleOptions } from '../chart.js'; */
+/** @import { ChartMark } from '../layers/layer.js'; */
+
 import { getColor } from '../data.js';
 import Layer from '../layers/layer.js';
 
 /**
  * Renders a combined pie or donut using all dataset values.
+ * @augments {Layer<ChartScaleOptions, ChartMark>}
  */
 export default class PieChart extends Layer {
     #oldSlices = [];

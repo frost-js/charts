@@ -1,9 +1,25 @@
+/** @import { ChartTooltipOptions } from '../chart.js'; */
+/** @import { ChartMark, LayerPlacement } from './layer.js'; */
+
 import { formatValue } from '../data.js';
 import { measureText, updateFont, wrapLines } from '../helpers.js';
 import Layer from './layer.js';
 
 /**
+ * @typedef {object} TooltipBounds
+ * @property {number} x The body's left edge.
+ * @property {number} y The body's top edge.
+ * @property {number} width The body width.
+ * @property {number} height The body height.
+ * @property {number} radius The corner radius.
+ * @property {LayerPlacement} side The chosen side of the anchor.
+ * @property {number} anchorX The local anchor x coordinate.
+ * @property {number} anchorY The local anchor y coordinate.
+ */
+
+/**
  * Renders a rounded tooltip beside the pointer or anchored to a data mark.
+ * @augments {Layer<ChartTooltipOptions, ChartMark>}
  */
 export default class Tooltip extends Layer {
     /**
@@ -67,7 +83,7 @@ export default class Tooltip extends Layer {
     /**
      * Adds a small pointer to the same fill path, avoiding overlapping opacity.
      * @param {Path2D} path The tooltip outline.
-     * @param {object} bounds The body bounds and anchor position.
+     * @param {TooltipBounds} bounds The body bounds and anchor position.
      */
     #addArrow(path, bounds) {
         const { x, y, width, height, radius, side, anchorX, anchorY } = bounds;
@@ -81,7 +97,9 @@ export default class Tooltip extends Layer {
 
         const start = vertical ? x : y;
         const anchor = vertical ? anchorX : anchorY;
-        const center = Math.max(start + radius + size, Math.min(anchor, start + length - radius - size));
+        const minimum = start + radius + size;
+        const maximum = start + length - radius - size;
+        const center = Math.max(minimum, Math.min(anchor, maximum));
 
         if (vertical) {
             const edge = side === 'top' ? y + height : y;
@@ -108,8 +126,8 @@ export default class Tooltip extends Layer {
      * @param {number} height The tooltip height.
      * @param {number} anchorX The anchor's local x coordinate.
      * @param {number} anchorY The anchor's local y coordinate.
-     * @param {string} preferred The preferred side of the anchor.
-     * @returns {object} The body position and chosen side.
+     * @param {LayerPlacement} preferred The preferred side of the anchor.
+     * @returns {{x: number, y: number, side: LayerPlacement}} The body position and chosen side.
      */
     #place(width, height, anchorX, anchorY, preferred) {
         const gap = this.settings.arrowSize + 6;
@@ -128,7 +146,9 @@ export default class Tooltip extends Layer {
         for (const side of sides) {
             const candidate = candidates[side];
             const vertical = side === 'top' || side === 'bottom';
-            const fits = vertical ? candidate.y >= 0 && candidate.y <= maxY : candidate.x >= 0 && candidate.x <= maxX;
+            const fits = vertical ?
+                candidate.y >= 0 && candidate.y <= maxY :
+                candidate.x >= 0 && candidate.x <= maxX;
 
             if (fits) {
                 return {

@@ -4,10 +4,10 @@
 export default class Rect {
     /**
      * Creates a Rect.
-     * @param {number} x The X position.
-     * @param {number} y The Y position.
-     * @param {number} width The width.
-     * @param {number} height The height.
+     * @param {number} [x=0] The X position.
+     * @param {number} [y=0] The Y position.
+     * @param {number} [width=0] The width.
+     * @param {number} [height=0] The height.
      */
     constructor(x = 0, y = 0, width = 0, height = 0) {
         this.x = x;

@@ -1,9 +1,13 @@
+/** @import { ChartRadialAxisOptions } from '../chart.js'; */
+/** @import { ChartMark } from '../layers/layer.js'; */
+
 import { getColor } from '../data.js';
 import Layer from '../layers/layer.js';
 import { getScalePosition } from '../scale.js';
 
 /**
  * Renders equal-angle sectors whose radius represents each value.
+ * @augments {Layer<ChartRadialAxisOptions, ChartMark>}
  */
 export default class PolarAreaChart extends Layer {
     #oldSectors = new Map();

@@ -1,13 +1,14 @@
-/**
- * @import Rect from '../rect.js';
- */
+/** @import { ChartTickOptions } from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 
 import { measureText, updateFont } from '../helpers.js';
 import { getScalePosition } from '../scale.js';
 import Layer from './layer.js';
 
 /**
- * Lays out and renders numeric labels beside the plot.
+ * Lays out numeric ticks or horizontal bar categories beside the plot.
+ * @augments {Layer<ChartTickOptions>}
  */
 export default class LabelsY extends Layer {
     #categorical;
@@ -19,7 +20,7 @@ export default class LabelsY extends Layer {
     /**
      * Calculates the layer bounds before continuing layout.
      * @param {Rect} chartRect The remaining chart rectangle.
-     * @param {Function} next The next layout callback.
+     * @param {LayerLayoutCallback} next The next layout callback.
      */
     calculate(chartRect, next) {
         this.rect = chartRect.clone();

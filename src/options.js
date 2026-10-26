@@ -1,6 +1,4 @@
-/**
- * @import { ChartFont, ChartOptions } from './chart.js';
- */
+/** @import { ChartFont, ChartOptions } from './chart.js'; */
 
 import { parseNumber, parsePositiveNumber } from './helpers.js';
 

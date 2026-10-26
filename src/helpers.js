@@ -1,12 +1,17 @@
+/** @import { ChartFont } from './chart.js'; */
+
 /**
- * @import { ChartFont } from './chart.js';
+ * @typedef {object} ChartTextMetrics
+ * @property {number} width The measured text width.
+ * @property {number} fontBoundingBoxAscent The distance above the baseline.
+ * @property {number} fontBoundingBoxDescent The distance below the baseline.
  */
 
 /**
  * Measures text using a font-metric fallback for older canvas implementations.
  * @param {CanvasRenderingContext2D} context The measuring context.
  * @param {string|number} text The text to measure.
- * @returns {object} The text width, ascent, and descent.
+ * @returns {ChartTextMetrics} The text width, ascent, and descent.
  */
 export function measureText(context, text) {
     const metrics = context.measureText(String(text));

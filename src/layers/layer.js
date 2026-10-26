@@ -1,12 +1,47 @@
+/** @import Chart from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+
+/** @typedef {'top'|'right'|'bottom'|'left'} LayerPlacement */
+
 /**
- * @import Chart from '../chart.js';
+ * @typedef {object} LayerItem
+ * @property {number} datasetIndex The dataset index.
+ * @property {number} [index] The data index, omitted for whole-dataset legend keys.
+ * @property {string} label The displayed label.
+ * @property {number} [x] The chart-local pointer x coordinate after hit testing.
+ * @property {number} [y] The chart-local pointer y coordinate after hit testing.
+ * @property {number} [anchorX] The tooltip anchor x coordinate.
+ * @property {number} [anchorY] The tooltip anchor y coordinate.
+ * @property {LayerPlacement} [placement] The preferred tooltip side.
  */
+
+/** @typedef {LayerItem & {datasetLabel: string, value: number|{x: number, y: number}}} ChartMark */
+
 /**
- * @import Rect from '../rect.js';
+ * @typedef {object} PointGeometry
+ * @property {number} x The point's local x coordinate.
+ * @property {number} y The point's local y coordinate.
+ * @property {string} backgroundColor The point and area fill color.
+ * @property {string} borderColor The point and series border color.
+ * @property {number} borderWidth The border width in CSS pixels.
+ * @property {number} pointRadius The point radius in CSS pixels.
+ * @property {number} fillOpacity The area fill opacity.
+ * @property {boolean} [interactive] Whether the interpolated point has a current target.
+ */
+
+/** @typedef {ChartMark & PointGeometry} ChartPoint */
+
+/**
+ * Continues layout with the remaining chart rectangle.
+ * @callback LayerLayoutCallback
+ * @param {Rect} chartRect The remaining chart rectangle.
+ * @returns {void} Nothing.
  */
 
 /**
  * Provides layout and offscreen rendering shared by the chart layers.
+ * @template {object} [Settings=object]
+ * @template {LayerItem} [Item=LayerItem]
  */
 export default class Layer {
     #active = null;
@@ -21,7 +56,7 @@ export default class Layer {
     /**
      * Creates a Layer.
      * @param {Chart} chart The owning chart.
-     * @param {object} settings The layer settings.
+     * @param {Settings} settings The layer settings.
      */
     constructor(chart, settings) {
         this.#chart = chart;
@@ -32,7 +67,7 @@ export default class Layer {
 
     /**
      * Gets the active mark used by subclasses.
-     * @returns {object|null} The active mark.
+     * @returns {Item|null} The active mark.
      */
     get active() {
         return this.#active;
@@ -88,16 +123,16 @@ export default class Layer {
 
     /**
      * Gets the layer settings used by subclasses.
-     * @returns {object} The layer settings.
+     * @returns {Settings} The layer settings.
      */
     get settings() {
         return this.#settings;
     }
 
     /**
-     * Adds a hit region in layer-local coordinates.
+     * Adds a hit region whose path and optional anchors use layer-local coordinates.
      * @param {Path2D} path The rendered path.
-     * @param {object} data The associated data item.
+     * @param {Item} data The associated data item.
      */
     addHitRegion(path, data) {
         this.#hitRegions.push({ path, data });
@@ -106,7 +141,7 @@ export default class Layer {
     /**
      * Calculates the layer bounds and continues layout.
      * @param {Rect} chartRect The remaining chart rectangle.
-     * @param {Function} next The next layout callback.
+     * @param {LayerLayoutCallback} next The next layout callback.
      */
     calculate(chartRect, next) {
         this.#rect = chartRect.clone();
@@ -145,10 +180,10 @@ export default class Layer {
     }
 
     /**
-     * Finds a data mark at chart-local CSS coordinates.
+     * Finds a data mark and converts its anchors to chart-local CSS coordinates.
      * @param {number} x The pointer x coordinate.
      * @param {number} y The pointer y coordinate.
-     * @returns {object|null} The matching data item.
+     * @returns {(Item & {x: number, y: number, anchorX: number, anchorY: number})|null} The matching data item.
      */
     hitTest(x, y) {
         const ratio = this.#chart.pixelRatio;
@@ -184,7 +219,7 @@ export default class Layer {
 
     /**
      * Sets the mark highlighted by the layer.
-     * @param {object|null} item The active data item.
+     * @param {Item|null} item The active data item.
      */
     setActive(item) {
         this.#active = item;

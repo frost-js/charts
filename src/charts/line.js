@@ -1,9 +1,13 @@
+/** @import { ChartScaleOptions } from '../chart.js'; */
+/** @import { ChartPoint } from '../layers/layer.js'; */
+
 import { getColor } from '../data.js';
 import Layer from '../layers/layer.js';
 import { getScalePosition } from '../scale.js';
 
 /**
  * Renders line, area, and scatter series on the Cartesian axes.
+ * @augments {Layer<ChartScaleOptions, ChartPoint>}
  */
 export default class LineChart extends Layer {
     #baseY = 0;
@@ -60,6 +64,7 @@ export default class LineChart extends Layer {
                 if (scatter) {
                     x = this.rect.width * getScalePosition(value.x, minX, maxX);
                 }
+
                 const yValue = scatter ? value.y : value;
 
                 points.push({
@@ -137,7 +142,7 @@ export default class LineChart extends Layer {
 
     /**
      * Fills the area between a series and the current zero baseline.
-     * @param {object[]} points The interpolated points.
+     * @param {ChartPoint[]} points The interpolated points.
      */
     #fillArea(points) {
         if (points.length < 2) {
@@ -166,7 +171,7 @@ export default class LineChart extends Layer {
 
     /**
      * Draws visible points and optional connecting segments.
-     * @param {object[]} points The interpolated points.
+     * @param {ChartPoint[]} points The interpolated points.
      * @param {boolean} connected Whether to connect successive points.
      */
     #renderSeries(points, connected) {

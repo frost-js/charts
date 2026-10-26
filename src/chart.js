@@ -1,6 +1,6 @@
-/**
- * @import { ChartData, ChartDataset } from './data.js';
- */
+/** @import { ChartData, ChartDataset } from './data.js'; */
+/** @import { ChartMark } from './layers/layer.js'; */
+/** @import { LegendItem } from './layers/legend.js'; */
 
 import BarChart from './charts/bar.js';
 import LineChart from './charts/line.js';
@@ -825,7 +825,7 @@ export default class Chart {
     }
 
     /**
-     * Creates the original title, legend, axes, chart, and tooltip layers.
+     * Creates the title, legend, axes, chart, and tooltip layers in drawing order.
      */
     #build() {
         this.#layers = {
@@ -969,7 +969,7 @@ export default class Chart {
     /**
      * Converts a pointer event to chart-local CSS coordinates.
      * @param {PointerEvent|MouseEvent} event The pointer event.
-     * @returns {object|null} The coordinates, or null for a hidden canvas.
+     * @returns {{x: number, y: number}|null} The coordinates, or null for a hidden canvas.
      */
     #pointerPosition(event) {
         const rect = this.#canvas.getBoundingClientRect();
@@ -1005,7 +1005,7 @@ export default class Chart {
 
     /**
      * Updates the tooltip and pie highlight for the current pointer position.
-     * @param {object|null} item The hovered data item.
+     * @param {ChartMark|null} item The hovered data item.
      */
     #setActive(item) {
         this.#layers.chart.setActive(item);
@@ -1100,7 +1100,7 @@ export default class Chart {
 
     /**
      * Toggles the dataset or slice represented by a legend key.
-     * @param {object} item The legend item.
+     * @param {LegendItem} item The legend item.
      */
     #toggleLegendItem(item) {
         if (item.index == null) {

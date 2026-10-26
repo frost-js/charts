@@ -1,9 +1,12 @@
+/** @import { ChartTickOptions } from '../chart.js'; */
+
 import { updateFont } from '../helpers.js';
 import { getScalePosition } from '../scale.js';
 import Layer from './layer.js';
 
 /**
  * Draws centered radial scale numbers above the data fills.
+ * @augments {Layer<Pick<ChartTickOptions, 'display'|'font'|'color'|'callback'>>}
  */
 export default class LabelsR extends Layer {
     /**

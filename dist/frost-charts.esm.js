@@ -1,12 +1,16 @@
 // src/helpers.js
+/** @import { ChartFont } from './chart.js'; */
 /**
-* @import { ChartFont } from './chart.js';
+* @typedef {object} ChartTextMetrics
+* @property {number} width The measured text width.
+* @property {number} fontBoundingBoxAscent The distance above the baseline.
+* @property {number} fontBoundingBoxDescent The distance below the baseline.
 */
 /**
 * Measures text using a font-metric fallback for older canvas implementations.
 * @param {CanvasRenderingContext2D} context The measuring context.
 * @param {string|number} text The text to measure.
-* @returns {object} The text width, ascent, and descent.
+* @returns {ChartTextMetrics} The text width, ascent, and descent.
 */
 function measureText(context, text) {
 	const metrics = context.measureText(String(text));
@@ -126,10 +130,10 @@ function normalizeColors(colors, name) {
 }
 /**
 * Copies finite numbers or scatter coordinates into an independent data array.
-* @param {Array} data The supplied values or points.
+* @param {Array<number|string|{x: number|string, y: number|string}>} data The supplied values or points.
 * @param {string} type The chart type.
 * @param {number} index The dataset index used in errors.
-* @returns {Array} The validated values or points.
+* @returns {Array<number|{x: number, y: number}>} The validated values or points.
 */
 function normalizeValues(data, type, index) {
 	return Array.from(data, (value) => {
@@ -237,14 +241,43 @@ function formatValue(value) {
 }
 
 // src/layers/layer.js
+/** @import Chart from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @typedef {'top'|'right'|'bottom'|'left'} LayerPlacement */
 /**
-* @import Chart from '../chart.js';
+* @typedef {object} LayerItem
+* @property {number} datasetIndex The dataset index.
+* @property {number} [index] The data index, omitted for whole-dataset legend keys.
+* @property {string} label The displayed label.
+* @property {number} [x] The chart-local pointer x coordinate after hit testing.
+* @property {number} [y] The chart-local pointer y coordinate after hit testing.
+* @property {number} [anchorX] The tooltip anchor x coordinate.
+* @property {number} [anchorY] The tooltip anchor y coordinate.
+* @property {LayerPlacement} [placement] The preferred tooltip side.
 */
+/** @typedef {LayerItem & {datasetLabel: string, value: number|{x: number, y: number}}} ChartMark */
 /**
-* @import Rect from '../rect.js';
+* @typedef {object} PointGeometry
+* @property {number} x The point's local x coordinate.
+* @property {number} y The point's local y coordinate.
+* @property {string} backgroundColor The point and area fill color.
+* @property {string} borderColor The point and series border color.
+* @property {number} borderWidth The border width in CSS pixels.
+* @property {number} pointRadius The point radius in CSS pixels.
+* @property {number} fillOpacity The area fill opacity.
+* @property {boolean} [interactive] Whether the interpolated point has a current target.
+*/
+/** @typedef {ChartMark & PointGeometry} ChartPoint */
+/**
+* Continues layout with the remaining chart rectangle.
+* @callback LayerLayoutCallback
+* @param {Rect} chartRect The remaining chart rectangle.
+* @returns {void} Nothing.
 */
 /**
 * Provides layout and offscreen rendering shared by the chart layers.
+* @template {object} [Settings=object]
+* @template {LayerItem} [Item=LayerItem]
 */
 var Layer = class {
 	#active = null;
@@ -258,7 +291,7 @@ var Layer = class {
 	/**
 	* Creates a Layer.
 	* @param {Chart} chart The owning chart.
-	* @param {object} settings The layer settings.
+	* @param {Settings} settings The layer settings.
 	*/
 	constructor(chart, settings) {
 		this.#chart = chart;
@@ -268,7 +301,7 @@ var Layer = class {
 	}
 	/**
 	* Gets the active mark used by subclasses.
-	* @returns {object|null} The active mark.
+	* @returns {Item|null} The active mark.
 	*/
 	get active() {
 		return this.#active;
@@ -317,15 +350,15 @@ var Layer = class {
 	}
 	/**
 	* Gets the layer settings used by subclasses.
-	* @returns {object} The layer settings.
+	* @returns {Settings} The layer settings.
 	*/
 	get settings() {
 		return this.#settings;
 	}
 	/**
-	* Adds a hit region in layer-local coordinates.
+	* Adds a hit region whose path and optional anchors use layer-local coordinates.
 	* @param {Path2D} path The rendered path.
-	* @param {object} data The associated data item.
+	* @param {Item} data The associated data item.
 	*/
 	addHitRegion(path, data) {
 		this.#hitRegions.push({
@@ -336,7 +369,7 @@ var Layer = class {
 	/**
 	* Calculates the layer bounds and continues layout.
 	* @param {Rect} chartRect The remaining chart rectangle.
-	* @param {Function} next The next layout callback.
+	* @param {LayerLayoutCallback} next The next layout callback.
 	*/
 	calculate(chartRect, next) {
 		this.#rect = chartRect.clone();
@@ -361,10 +394,10 @@ var Layer = class {
 		context.drawImage(this.#canvas, this.#canvasRect.x, this.#canvasRect.y, this.#canvasRect.width, this.#canvasRect.height);
 	}
 	/**
-	* Finds a data mark at chart-local CSS coordinates.
+	* Finds a data mark and converts its anchors to chart-local CSS coordinates.
 	* @param {number} x The pointer x coordinate.
 	* @param {number} y The pointer y coordinate.
-	* @returns {object|null} The matching data item.
+	* @returns {(Item & {x: number, y: number, anchorX: number, anchorY: number})|null} The matching data item.
 	*/
 	hitTest(x, y) {
 		const ratio = this.#chart.pixelRatio;
@@ -390,7 +423,7 @@ var Layer = class {
 	}
 	/**
 	* Sets the mark highlighted by the layer.
-	* @param {object|null} item The active data item.
+	* @param {Item|null} item The active data item.
 	*/
 	setActive(item) {
 		this.#active = item;
@@ -477,8 +510,26 @@ function getScalePosition(value, minimum, maximum) {
 }
 
 // src/charts/bar.js
+/** @import { ChartScaleOptions } from '../chart.js'; */
+/**
+* @typedef {object} BarGeometry
+* @property {number} x The local left edge.
+* @property {number} y The local top edge.
+* @property {number} width The bar width.
+* @property {number} height The bar height.
+* @property {number} end The value end along the numeric axis.
+* @property {string} backgroundColor The fill color.
+* @property {string} borderColor The border color.
+* @property {number} borderWidth The border width in CSS pixels.
+* @property {string} label The category label.
+* @property {string} datasetLabel The dataset label.
+* @property {number} datasetIndex The dataset index.
+* @property {number} index The category index.
+* @property {number} value The data value.
+*/
 /**
 * Renders grouped or stacked bars in either orientation.
+* @augments {Layer<ChartScaleOptions, BarGeometry>}
 */
 var BarChart = class extends Layer {
 	#baseline = 0;
@@ -500,7 +551,8 @@ var BarChart = class extends Layer {
 		const groupSize = categorySize / Math.max(1, labels.length);
 		const count = stacked ? 1 : visible.length;
 		const spacing = Math.min(5, groupSize / (count + 1) / 2);
-		const thickness = Math.max(0, (groupSize - spacing * (count + 1)) / Math.max(1, count));
+		const available = groupSize - spacing * (count + 1);
+		const thickness = Math.max(0, available / Math.max(1, count));
 		const min = this.chart.getScaleMin();
 		const max = this.chart.getScaleMax();
 		const position = (value) => {
@@ -593,8 +645,8 @@ var BarChart = class extends Layer {
 	}
 	/**
 	* Collapses a bar to the current zero baseline while retaining its category.
-	* @param {object} item The bar geometry.
-	* @returns {object} The collapsed geometry.
+	* @param {BarGeometry} item The bar geometry.
+	* @returns {BarGeometry} The collapsed geometry.
 	*/
 	#collapse(item) {
 		const collapsed = {
@@ -613,8 +665,11 @@ var BarChart = class extends Layer {
 };
 
 // src/charts/line.js
+/** @import { ChartScaleOptions } from '../chart.js'; */
+/** @import { ChartPoint } from '../layers/layer.js'; */
 /**
 * Renders line, area, and scatter series on the Cartesian axes.
+* @augments {Layer<ChartScaleOptions, ChartPoint>}
 */
 var LineChart = class extends Layer {
 	#baseY = 0;
@@ -720,7 +775,7 @@ var LineChart = class extends Layer {
 	}
 	/**
 	* Fills the area between a series and the current zero baseline.
-	* @param {object[]} points The interpolated points.
+	* @param {ChartPoint[]} points The interpolated points.
 	*/
 	#fillArea(points) {
 		if (points.length < 2) return;
@@ -739,7 +794,7 @@ var LineChart = class extends Layer {
 	}
 	/**
 	* Draws visible points and optional connecting segments.
-	* @param {object[]} points The interpolated points.
+	* @param {ChartPoint[]} points The interpolated points.
 	* @param {boolean} connected Whether to connect successive points.
 	*/
 	#renderSeries(points, connected) {
@@ -783,8 +838,11 @@ var LineChart = class extends Layer {
 };
 
 // src/charts/pie.js
+/** @import { ChartScaleOptions } from '../chart.js'; */
+/** @import { ChartMark } from '../layers/layer.js'; */
 /**
 * Renders a combined pie or donut using all dataset values.
+* @augments {Layer<ChartScaleOptions, ChartMark>}
 */
 var PieChart = class extends Layer {
 	#oldSlices = [];
@@ -883,8 +941,11 @@ var PieChart = class extends Layer {
 };
 
 // src/charts/polar-area.js
+/** @import { ChartRadialAxisOptions } from '../chart.js'; */
+/** @import { ChartMark } from '../layers/layer.js'; */
 /**
 * Renders equal-angle sectors whose radius represents each value.
+* @augments {Layer<ChartRadialAxisOptions, ChartMark>}
 */
 var PolarAreaChart = class extends Layer {
 	#oldSectors = /* @__PURE__ */ new Map();
@@ -983,8 +1044,11 @@ var PolarAreaChart = class extends Layer {
 };
 
 // src/charts/radar.js
+/** @import { ChartRadialAxisOptions } from '../chart.js'; */
+/** @import { ChartPoint } from '../layers/layer.js'; */
 /**
 * Connects each dataset around shared radial category axes.
+* @augments {Layer<ChartRadialAxisOptions, ChartPoint>}
 */
 var RadarChart = class extends Layer {
 	#oldPoints = [];
@@ -1081,7 +1145,7 @@ var RadarChart = class extends Layer {
 	}
 	/**
 	* Connects the visible points into a closed polygon.
-	* @param {object[]} points The interpolated points.
+	* @param {ChartPoint[]} points The interpolated points.
 	* @returns {Path2D} The polygon path.
 	*/
 	#polygon(points) {
@@ -1093,7 +1157,7 @@ var RadarChart = class extends Layer {
 	}
 	/**
 	* Draws the polygon outline and interactive points.
-	* @param {object[]} points The interpolated points.
+	* @param {ChartPoint[]} points The interpolated points.
 	*/
 	#renderSeries(points) {
 		if (!points.length) return;
@@ -1136,11 +1200,12 @@ function ease(progress, easing) {
 }
 
 // src/layers/grid.js
-/**
-* @import Rect from '../rect.js';
-*/
+/** @import { ChartScaleOptions } from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 /**
 * Draws grid lines, axis borders, and ticks behind the data layer.
+* @augments {Layer<ChartScaleOptions>}
 */
 var Grid = class extends Layer {
 	#horizontal;
@@ -1151,7 +1216,7 @@ var Grid = class extends Layer {
 	/**
 	* Reserves tick space before calculating the plot.
 	* @param {Rect} chartRect The remaining chart rectangle.
-	* @param {Function} next The next layout callback.
+	* @param {LayerLayoutCallback} next The next layout callback.
 	*/
 	calculate(chartRect, next) {
 		this.rect = chartRect.clone();
@@ -1172,7 +1237,7 @@ var Grid = class extends Layer {
 	* Keeps borders and ticks inside the offscreen drawing surface.
 	*/
 	calculateCanvas() {
-		this.canvasRect = this.chart.outerRect.clone();
+		this.canvasRect = this.chart.outerRect;
 	}
 	/**
 	* Renders grids, ticks, and borders according to each axis's settings.
@@ -1224,7 +1289,7 @@ var Grid = class extends Layer {
 		if (display && grid.drawBorder) this.#line(rect.left, rect.top, rect.left, rect.bottom, grid.borderColor, grid.borderWidth);
 	}
 	/**
-	* Renders vertical grid lines at x categories.
+	* Renders vertical grid lines at x categories or numeric ticks.
 	*/
 	#renderGridX() {
 		const { display, grid } = this.settings.x;
@@ -1236,7 +1301,7 @@ var Grid = class extends Layer {
 		}
 	}
 	/**
-	* Renders horizontal grid lines at y scale ticks.
+	* Renders horizontal grid lines at y categories or numeric ticks.
 	*/
 	#renderGridY() {
 		const { display, grid } = this.settings.y;
@@ -1283,7 +1348,7 @@ var Grid = class extends Layer {
 		return display && ticks.display && ticks.drawTicks ? grid.tickLength : 0;
 	}
 	/**
-	* Gets a category's x coordinate.
+	* Gets the x coordinate of a category or numeric tick.
 	* @param {number} index The category index.
 	* @returns {number} The chart-local coordinate.
 	*/
@@ -1298,7 +1363,7 @@ var Grid = class extends Layer {
 		return count > 1 ? rect.left + index * rect.width / (count - 1) : rect.centerX;
 	}
 	/**
-	* Gets a scale tick's y coordinate.
+	* Gets the y coordinate of a category or numeric tick.
 	* @param {number} index The scale index.
 	* @returns {number} The chart-local coordinate.
 	*/
@@ -1313,8 +1378,10 @@ var Grid = class extends Layer {
 };
 
 // src/layers/labels-r.js
+/** @import { ChartTickOptions } from '../chart.js'; */
 /**
 * Draws centered radial scale numbers above the data fills.
+* @augments {Layer<Pick<ChartTickOptions, 'display'|'font'|'color'|'callback'>>}
 */
 var LabelsR = class extends Layer {
 	/**
@@ -1348,11 +1415,12 @@ var LabelsR = class extends Layer {
 };
 
 // src/layers/labels-x.js
-/**
-* @import Rect from '../rect.js';
-*/
+/** @import { ChartTickOptions } from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 /**
 * Lays out category labels or numeric scatter ticks below the plot.
+* @augments {Layer<ChartTickOptions>}
 */
 var LabelsX = class extends Layer {
 	#gridWidth;
@@ -1364,7 +1432,7 @@ var LabelsX = class extends Layer {
 	/**
 	* Calculates the layer bounds before continuing layout.
 	* @param {Rect} chartRect The remaining chart rectangle.
-	* @param {Function} next The next layout callback.
+	* @param {LayerLayoutCallback} next The next layout callback.
 	*/
 	calculate(chartRect, next) {
 		this.rect = chartRect.clone();
@@ -1431,11 +1499,12 @@ var LabelsX = class extends Layer {
 };
 
 // src/layers/labels-y.js
+/** @import { ChartTickOptions } from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 /**
-* @import Rect from '../rect.js';
-*/
-/**
-* Lays out and renders numeric labels beside the plot.
+* Lays out numeric ticks or horizontal bar categories beside the plot.
+* @augments {Layer<ChartTickOptions>}
 */
 var LabelsY = class extends Layer {
 	#categorical;
@@ -1446,7 +1515,7 @@ var LabelsY = class extends Layer {
 	/**
 	* Calculates the layer bounds before continuing layout.
 	* @param {Rect} chartRect The remaining chart rectangle.
-	* @param {Function} next The next layout callback.
+	* @param {LayerLayoutCallback} next The next layout callback.
 	*/
 	calculate(chartRect, next) {
 		this.rect = chartRect.clone();
@@ -1504,11 +1573,23 @@ var LabelsY = class extends Layer {
 };
 
 // src/layers/legend.js
+/** @import { ChartLegendOptions } from '../chart.js'; */
+/** @import { ChartDataset } from '../data.js'; */
+/** @import { ChartTextMetrics } from '../helpers.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
+/** @typedef {ChartDataset & {label: string, datasetIndex: number, index?: number, visible: boolean}} LegendItem */
 /**
-* @import Rect from '../rect.js';
+* @typedef {object} LegendLabel
+* @property {LegendItem} dataset The dataset or slice represented by the entry.
+* @property {string[]} lines The wrapped label text.
+* @property {ChartTextMetrics[]} metrics The measured lines.
+* @property {number} width The total swatch and text width.
+* @property {number} height The total entry height.
 */
 /**
 * Lays out dataset keys in horizontal rows or vertical columns.
+* @augments {Layer<ChartLegendOptions, LegendItem>}
 */
 var Legend = class extends Layer {
 	#cols;
@@ -1517,7 +1598,7 @@ var Legend = class extends Layer {
 	#spacing;
 	/**
 	* Gets the visible legend entries in reading order.
-	* @returns {object[]} The dataset or slice keys.
+	* @returns {LegendItem[]} The dataset or slice keys.
 	*/
 	get items() {
 		if (!this.settings.display) return [];
@@ -1526,7 +1607,7 @@ var Legend = class extends Layer {
 	/**
 	* Calculates the layer bounds before continuing layout.
 	* @param {Rect} chartRect The remaining chart rectangle.
-	* @param {Function} next The next layout callback.
+	* @param {LayerLayoutCallback} next The next layout callback.
 	*/
 	calculate(chartRect, next) {
 		this.rect = chartRect.clone();
@@ -1566,17 +1647,14 @@ var Legend = class extends Layer {
 				}));
 			});
 		}
-		const labelWidth = maxWidth - this.settings.labels.boxWidth - this.#spacing;
-		const labels = datasets.map((dataset) => {
-			return wrapLines(this.context, dataset.label, labelWidth);
-		});
+		const labels = this.#measureLabels(datasets, maxWidth);
 		switch (this.settings.position) {
 			case "top":
 			case "bottom":
-				this.#calculateHorizontal(chartRect, datasets, labels, maxWidth, maxHeight);
+				this.#calculateHorizontal(chartRect, labels, maxWidth, maxHeight);
 				break;
 			case "right":
-			case "left": this.#calculateVertical(chartRect, datasets, labels, maxWidth, maxHeight);
+			case "left": this.#calculateVertical(chartRect, labels, maxWidth, maxHeight);
 		}
 		next(chartRect);
 	}
@@ -1600,12 +1678,11 @@ var Legend = class extends Layer {
 	/**
 	* Arranges legend items into horizontal rows.
 	* @param {Rect} chartRect The remaining chart rectangle.
-	* @param {object[]} datasets The datasets.
-	* @param {string[][]} labels The wrapped labels.
+	* @param {LegendLabel[]} labels The measured legend entries.
 	* @param {number} maxWidth The maximum width.
 	* @param {number} maxHeight The maximum height.
 	*/
-	#calculateHorizontal(chartRect, datasets, labels, maxWidth, maxHeight) {
+	#calculateHorizontal(chartRect, labels, maxWidth, maxHeight) {
 		let height = 0;
 		let row = {
 			width: 0,
@@ -1621,37 +1698,29 @@ var Legend = class extends Layer {
 			height += row.height + (rows.length > 1 ? this.settings.labels.padding : 0);
 			return true;
 		};
-		for (const [i, lines] of labels.entries()) {
-			const metrics = lines.map((line) => measureText(this.context, line));
-			const labelHeight = lines.length * this.#lineHeight;
-			const labelWidth = Math.max(0, ...metrics.map((metric) => metric.width));
-			const legendHeight = Math.max(this.settings.labels.boxHeight, labelHeight);
-			const legendWidth = this.settings.labels.boxWidth + labelWidth + this.#spacing;
-			const label = {
-				dataset: datasets[i],
-				lines,
-				metrics
-			};
-			if (row.width + legendWidth + (row.width ? this.settings.labels.padding : 0) > maxWidth) {
+		for (const label of labels) {
+			if (row.width + label.width + (row.width ? this.settings.labels.padding : 0) > maxWidth) {
 				if (addRow(row) === false) {
 					row = null;
 					break;
 				}
 				row = {
-					width: legendWidth,
-					height: legendHeight,
+					width: label.width,
+					height: label.height,
 					labels: [label]
 				};
 				continue;
 			}
 			if (row.width) row.width += this.settings.labels.padding;
-			row.width += legendWidth;
-			row.height = Math.max(row.height, legendHeight);
+			row.width += label.width;
+			row.height = Math.max(row.height, label.height);
 			row.labels.push(label);
 		}
 		if (row && row.width && row.height) addRow(row);
+		const rowHeight = rows.reduce((total, row) => total + row.height, 0);
+		const rowSpacing = this.settings.labels.padding * Math.max(0, rows.length - 1);
 		const rectWidth = Math.max(0, ...rows.map((row) => row.width));
-		const rectHeight = rows.reduce((acc, v) => acc + v.height, 0) + this.settings.labels.padding * Math.max(0, rows.length - 1);
+		const rectHeight = rowHeight + rowSpacing;
 		const padding = rows.length ? Math.min(this.settings.labels.padding, chartRect.height - rectHeight) : 0;
 		this.#rows = rows;
 		switch (this.settings.align) {
@@ -1674,12 +1743,11 @@ var Legend = class extends Layer {
 	/**
 	* Arranges legend items into vertical columns.
 	* @param {Rect} chartRect The remaining chart rectangle.
-	* @param {object[]} datasets The datasets.
-	* @param {string[][]} labels The wrapped labels.
+	* @param {LegendLabel[]} labels The measured legend entries.
 	* @param {number} maxWidth The maximum width.
 	* @param {number} maxHeight The maximum height.
 	*/
-	#calculateVertical(chartRect, datasets, labels, maxWidth, maxHeight) {
+	#calculateVertical(chartRect, labels, maxWidth, maxHeight) {
 		let width = 0;
 		let col = {
 			width: 0,
@@ -1695,37 +1763,26 @@ var Legend = class extends Layer {
 			width += col.width + (cols.length > 1 ? this.settings.labels.padding : 0);
 			return true;
 		};
-		for (const [i, lines] of labels.entries()) {
-			const metrics = lines.map((line) => measureText(this.context, line));
-			const labelHeight = lines.length * this.#lineHeight;
-			const labelWidth = Math.max(0, ...metrics.map((metric) => metric.width));
-			const legendHeight = Math.max(this.settings.labels.boxHeight, labelHeight);
-			const legendWidth = this.settings.labels.boxWidth + labelWidth + this.#spacing;
-			const label = {
-				dataset: datasets[i],
-				lines,
-				metrics,
-				width: legendWidth
-			};
-			if (col.height + legendHeight + (col.height ? this.settings.labels.padding : 0) > maxHeight) {
+		for (const label of labels) {
+			if (col.height + label.height + (col.height ? this.settings.labels.padding : 0) > maxHeight) {
 				if (addCol(col) === false) {
 					col = null;
 					break;
 				}
 				col = {
-					width: legendWidth,
-					height: legendHeight,
+					width: label.width,
+					height: label.height,
 					labels: [label]
 				};
 				continue;
 			}
 			if (col.height) col.height += this.settings.labels.padding;
-			col.width = Math.max(col.width, legendWidth);
-			col.height += legendHeight;
+			col.width = Math.max(col.width, label.width);
+			col.height += label.height;
 			col.labels.push(label);
 		}
 		if (col && col.width && col.height) addCol(col);
-		const rectWidth = cols.reduce((acc, v) => acc + v.width, 0) + this.settings.labels.padding * Math.max(0, cols.length - 1);
+		const rectWidth = cols.reduce((total, col) => total + col.width, 0) + this.settings.labels.padding * Math.max(0, cols.length - 1);
 		const rectHeight = Math.max(0, ...cols.map((col) => col.height));
 		const padding = cols.length ? Math.min(this.settings.labels.padding, chartRect.width - rectWidth) : 0;
 		this.#cols = cols;
@@ -1747,6 +1804,29 @@ var Legend = class extends Layer {
 		chartRect.width -= this.rect.width + padding;
 	}
 	/**
+	* Measures entries once for horizontal and vertical layout and rendering.
+	* @param {LegendItem[]} datasets The dataset or slice keys.
+	* @param {number} maxWidth The maximum entry width.
+	* @returns {LegendLabel[]} The measured legend entries.
+	*/
+	#measureLabels(datasets, maxWidth) {
+		const { boxWidth, boxHeight } = this.settings.labels;
+		const availableWidth = maxWidth - boxWidth - this.#spacing;
+		return datasets.map((dataset) => {
+			const lines = wrapLines(this.context, dataset.label, availableWidth);
+			const metrics = lines.map((line) => measureText(this.context, line));
+			const textWidth = Math.max(0, ...metrics.map((metric) => metric.width));
+			const textHeight = lines.length * this.#lineHeight;
+			return {
+				dataset,
+				lines,
+				metrics,
+				width: boxWidth + textWidth + this.#spacing,
+				height: Math.max(boxHeight, textHeight)
+			};
+		});
+	}
+	/**
 	* Renders the horizontal legend rows.
 	*/
 	#renderHorizontal() {
@@ -1761,17 +1841,15 @@ var Legend = class extends Layer {
 				case "end": x = this.rect.width - row.width;
 			}
 			for (const label of row.labels) {
-				const textWidth = Math.max(0, ...label.metrics.map((metric) => metric.width));
-				const width = this.settings.labels.boxWidth + this.#spacing + textWidth;
-				this.#renderLabel(label, x, y, width, row.height);
-				x += width + this.settings.labels.padding;
+				this.#renderLabel(label, x, y, label.width, row.height);
+				x += label.width + this.settings.labels.padding;
 			}
 			y += row.height + this.settings.labels.padding;
 		}
 	}
 	/**
 	* Draws a legend swatch, label, hidden state, and interactive hit area.
-	* @param {object} label The wrapped legend entry.
+	* @param {LegendLabel} label The measured legend entry.
 	* @param {number} x The left edge.
 	* @param {number} y The top edge.
 	* @param {number} width The item width.
@@ -1825,7 +1903,6 @@ var Legend = class extends Layer {
 		for (const col of this.#cols) {
 			let y = 0;
 			for (const label of col.labels) {
-				const height = Math.max(label.lines.length * this.#lineHeight, this.settings.labels.boxHeight);
 				let labelX = x;
 				switch (this.settings.labels.textAlign) {
 					case "center":
@@ -1834,8 +1911,8 @@ var Legend = class extends Layer {
 					case "right":
 					case "end": labelX += col.width - label.width;
 				}
-				this.#renderLabel(label, labelX, y, label.width, height);
-				y += height + this.settings.labels.padding;
+				this.#renderLabel(label, labelX, y, label.width, label.height);
+				y += label.height + this.settings.labels.padding;
 			}
 			x += col.width + this.settings.labels.padding;
 		}
@@ -1843,11 +1920,12 @@ var Legend = class extends Layer {
 };
 
 // src/layers/radial-grid.js
-/**
-* @import Rect from '../rect.js';
-*/
+/** @import { ChartRadialAxisOptions } from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 /**
 * Reserves a circular plot and draws radial guides and category labels.
+* @augments {Layer<ChartRadialAxisOptions>}
 */
 var RadialGrid = class extends Layer {
 	#labels = [];
@@ -1855,7 +1933,7 @@ var RadialGrid = class extends Layer {
 	/**
 	* Centers a square plot while reserving room for the surrounding labels.
 	* @param {Rect} chartRect The remaining chart rectangle.
-	* @param {Function} next The next layout callback.
+	* @param {LayerLayoutCallback} next The next layout callback.
 	*/
 	calculate(chartRect, next) {
 		this.rect = chartRect.clone();
@@ -1972,11 +2050,12 @@ var RadialGrid = class extends Layer {
 };
 
 // src/layers/title.js
-/**
-* @import Rect from '../rect.js';
-*/
+/** @import { ChartTitleOptions } from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 /**
 * Lays out and renders the chart title along any edge.
+* @augments {Layer<ChartTitleOptions>}
 */
 var Title = class extends Layer {
 	#lineHeight;
@@ -1985,7 +2064,7 @@ var Title = class extends Layer {
 	/**
 	* Calculates the layer bounds before continuing layout.
 	* @param {Rect} chartRect The remaining chart rectangle.
-	* @param {Function} next The next layout callback.
+	* @param {LayerLayoutCallback} next The next layout callback.
 	*/
 	calculate(chartRect, next) {
 		this.rect = chartRect.clone();
@@ -2097,8 +2176,22 @@ var Title = class extends Layer {
 };
 
 // src/layers/tooltip.js
+/** @import { ChartTooltipOptions } from '../chart.js'; */
+/** @import { ChartMark, LayerPlacement } from './layer.js'; */
+/**
+* @typedef {object} TooltipBounds
+* @property {number} x The body's left edge.
+* @property {number} y The body's top edge.
+* @property {number} width The body width.
+* @property {number} height The body height.
+* @property {number} radius The corner radius.
+* @property {LayerPlacement} side The chosen side of the anchor.
+* @property {number} anchorX The local anchor x coordinate.
+* @property {number} anchorY The local anchor y coordinate.
+*/
 /**
 * Renders a rounded tooltip beside the pointer or anchored to a data mark.
+* @augments {Layer<ChartTooltipOptions, ChartMark>}
 */
 var Tooltip = class extends Layer {
 	/**
@@ -2157,7 +2250,7 @@ var Tooltip = class extends Layer {
 	/**
 	* Adds a small pointer to the same fill path, avoiding overlapping opacity.
 	* @param {Path2D} path The tooltip outline.
-	* @param {object} bounds The body bounds and anchor position.
+	* @param {TooltipBounds} bounds The body bounds and anchor position.
 	*/
 	#addArrow(path, bounds) {
 		const { x, y, width, height, radius, side, anchorX, anchorY } = bounds;
@@ -2167,7 +2260,9 @@ var Tooltip = class extends Layer {
 		if (!size) return;
 		const start = vertical ? x : y;
 		const anchor = vertical ? anchorX : anchorY;
-		const center = Math.max(start + radius + size, Math.min(anchor, start + length - radius - size));
+		const minimum = start + radius + size;
+		const maximum = start + length - radius - size;
+		const center = Math.max(minimum, Math.min(anchor, maximum));
 		if (vertical) {
 			const edge = side === "top" ? y + height : y;
 			const tip = edge + (side === "top" ? size : -size);
@@ -2189,8 +2284,8 @@ var Tooltip = class extends Layer {
 	* @param {number} height The tooltip height.
 	* @param {number} anchorX The anchor's local x coordinate.
 	* @param {number} anchorY The anchor's local y coordinate.
-	* @param {string} preferred The preferred side of the anchor.
-	* @returns {object} The body position and chosen side.
+	* @param {LayerPlacement} preferred The preferred side of the anchor.
+	* @returns {{x: number, y: number, side: LayerPlacement}} The body position and chosen side.
 	*/
 	#place(width, height, anchorX, anchorY, preferred) {
 		const gap = this.settings.arrowSize + 6;
@@ -2246,9 +2341,7 @@ var Tooltip = class extends Layer {
 };
 
 // src/options.js
-/**
-* @import { ChartFont, ChartOptions } from './chart.js';
-*/
+/** @import { ChartFont, ChartOptions } from './chart.js'; */
 /**
 * Merges option objects, cloning arrays instead of merging their entries.
 * @param {...object} sources The option sources in precedence order.
@@ -2365,10 +2458,10 @@ function normalizeOptions(options, defaults) {
 var Rect = class Rect {
 	/**
 	* Creates a Rect.
-	* @param {number} x The X position.
-	* @param {number} y The Y position.
-	* @param {number} width The width.
-	* @param {number} height The height.
+	* @param {number} [x=0] The X position.
+	* @param {number} [y=0] The Y position.
+	* @param {number} [width=0] The width.
+	* @param {number} [height=0] The height.
 	*/
 	constructor(x = 0, y = 0, width = 0, height = 0) {
 		this.x = x;
@@ -2428,9 +2521,9 @@ var Rect = class Rect {
 };
 
 // src/chart.js
-/**
-* @import { ChartData, ChartDataset } from './data.js';
-*/
+/** @import { ChartData, ChartDataset } from './data.js'; */
+/** @import { ChartMark } from './layers/layer.js'; */
+/** @import { LegendItem } from './layers/legend.js'; */
 /**
 * @typedef {object} ChartFont
 * @property {string} [family='"Helvetica Neue", Helvetica, Arial, sans-serif'] The CSS font family.
@@ -3067,7 +3160,7 @@ var Chart = class Chart {
 		this.run();
 	}
 	/**
-	* Creates the original title, legend, axes, chart, and tooltip layers.
+	* Creates the title, legend, axes, chart, and tooltip layers in drawing order.
 	*/
 	#build() {
 		this.#layers = {
@@ -3167,7 +3260,7 @@ var Chart = class Chart {
 	/**
 	* Converts a pointer event to chart-local CSS coordinates.
 	* @param {PointerEvent|MouseEvent} event The pointer event.
-	* @returns {object|null} The coordinates, or null for a hidden canvas.
+	* @returns {{x: number, y: number}|null} The coordinates, or null for a hidden canvas.
 	*/
 	#pointerPosition(event) {
 		const rect = this.#canvas.getBoundingClientRect();
@@ -3189,7 +3282,7 @@ var Chart = class Chart {
 	}
 	/**
 	* Updates the tooltip and pie highlight for the current pointer position.
-	* @param {object|null} item The hovered data item.
+	* @param {ChartMark|null} item The hovered data item.
 	*/
 	#setActive(item) {
 		this.#layers.chart.setActive(item);
@@ -3260,7 +3353,7 @@ var Chart = class Chart {
 	}
 	/**
 	* Toggles the dataset or slice represented by a legend key.
-	* @param {object} item The legend item.
+	* @param {LegendItem} item The legend item.
 	*/
 	#toggleLegendItem(item) {
 		if (item.index == null) this.setDatasetVisibility(item.datasetIndex, !this.isDatasetVisible(item.datasetIndex));

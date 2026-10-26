@@ -56,10 +56,10 @@ function normalizeColors(colors, name) {
 
 /**
  * Copies finite numbers or scatter coordinates into an independent data array.
- * @param {Array} data The supplied values or points.
+ * @param {Array<number|string|{x: number|string, y: number|string}>} data The supplied values or points.
  * @param {string} type The chart type.
  * @param {number} index The dataset index used in errors.
- * @returns {Array} The validated values or points.
+ * @returns {Array<number|{x: number, y: number}>} The validated values or points.
  */
 function normalizeValues(data, type, index) {
     return Array.from(data, (value) => {

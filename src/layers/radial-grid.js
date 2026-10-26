@@ -1,6 +1,6 @@
-/**
- * @import Rect from '../rect.js';
- */
+/** @import { ChartRadialAxisOptions } from '../chart.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 
 import { measureText, updateFont } from '../helpers.js';
 import { getScalePosition } from '../scale.js';
@@ -8,6 +8,7 @@ import Layer from './layer.js';
 
 /**
  * Reserves a circular plot and draws radial guides and category labels.
+ * @augments {Layer<ChartRadialAxisOptions>}
  */
 export default class RadialGrid extends Layer {
     #labels = [];
@@ -16,10 +17,11 @@ export default class RadialGrid extends Layer {
     /**
      * Centers a square plot while reserving room for the surrounding labels.
      * @param {Rect} chartRect The remaining chart rectangle.
-     * @param {Function} next The next layout callback.
+     * @param {LayerLayoutCallback} next The next layout callback.
      */
     calculate(chartRect, next) {
         this.rect = chartRect.clone();
+
         const labels = this.chart.getLabels();
 
         this.#labels = labels;

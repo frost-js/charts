@@ -1,12 +1,26 @@
-/**
- * @import Rect from '../rect.js';
- */
+/** @import { ChartLegendOptions } from '../chart.js'; */
+/** @import { ChartDataset } from '../data.js'; */
+/** @import { ChartTextMetrics } from '../helpers.js'; */
+/** @import Rect from '../rect.js'; */
+/** @import { LayerLayoutCallback } from './layer.js'; */
 
 import { measureText, updateFont, wrapLines } from '../helpers.js';
 import Layer from './layer.js';
 
+/** @typedef {ChartDataset & {label: string, datasetIndex: number, index?: number, visible: boolean}} LegendItem */
+
+/**
+ * @typedef {object} LegendLabel
+ * @property {LegendItem} dataset The dataset or slice represented by the entry.
+ * @property {string[]} lines The wrapped label text.
+ * @property {ChartTextMetrics[]} metrics The measured lines.
+ * @property {number} width The total swatch and text width.
+ * @property {number} height The total entry height.
+ */
+
 /**
  * Lays out dataset keys in horizontal rows or vertical columns.
+ * @augments {Layer<ChartLegendOptions, LegendItem>}
  */
 export default class Legend extends Layer {
     #cols;
@@ -16,7 +30,7 @@ export default class Legend extends Layer {
 
     /**
      * Gets the visible legend entries in reading order.
-     * @returns {object[]} The dataset or slice keys.
+     * @returns {LegendItem[]} The dataset or slice keys.
      */
     get items() {
         if (!this.settings.display) {
@@ -31,7 +45,7 @@ export default class Legend extends Layer {
     /**
      * Calculates the layer bounds before continuing layout.
      * @param {Rect} chartRect The remaining chart rectangle.
-     * @param {Function} next The next layout callback.
+     * @param {LayerLayoutCallback} next The next layout callback.
      */
     calculate(chartRect, next) {
         this.rect = chartRect.clone();
@@ -77,19 +91,16 @@ export default class Legend extends Layer {
             });
         }
 
-        const labelWidth = maxWidth - this.settings.labels.boxWidth - this.#spacing;
-        const labels = datasets.map((dataset) => {
-            return wrapLines(this.context, dataset.label, labelWidth);
-        });
+        const labels = this.#measureLabels(datasets, maxWidth);
 
         switch (this.settings.position) {
             case 'top':
             case 'bottom':
-                this.#calculateHorizontal(chartRect, datasets, labels, maxWidth, maxHeight);
+                this.#calculateHorizontal(chartRect, labels, maxWidth, maxHeight);
                 break;
             case 'right':
             case 'left':
-                this.#calculateVertical(chartRect, datasets, labels, maxWidth, maxHeight);
+                this.#calculateVertical(chartRect, labels, maxWidth, maxHeight);
                 break;
         }
 
@@ -125,12 +136,11 @@ export default class Legend extends Layer {
     /**
      * Arranges legend items into horizontal rows.
      * @param {Rect} chartRect The remaining chart rectangle.
-     * @param {object[]} datasets The datasets.
-     * @param {string[][]} labels The wrapped labels.
+     * @param {LegendLabel[]} labels The measured legend entries.
      * @param {number} maxWidth The maximum width.
      * @param {number} maxHeight The maximum height.
      */
-    #calculateHorizontal(chartRect, datasets, labels, maxWidth, maxHeight) {
+    #calculateHorizontal(chartRect, labels, maxWidth, maxHeight) {
         let height = 0;
 
         let row = {
@@ -160,30 +170,16 @@ export default class Legend extends Layer {
             return true;
         };
 
-        for (const [i, lines] of labels.entries()) {
-            const metrics = lines.map((line) => measureText(this.context, line));
-
-            const labelHeight = lines.length * this.#lineHeight;
-            const labelWidth = Math.max(0, ...metrics.map((metric) => metric.width));
-
-            const legendHeight = Math.max(this.settings.labels.boxHeight, labelHeight);
-            const legendWidth = this.settings.labels.boxWidth + labelWidth + this.#spacing;
-
-            const label = {
-                dataset: datasets[i],
-                lines,
-                metrics,
-            };
-
-            if (row.width + legendWidth + (row.width ? this.settings.labels.padding : 0) > maxWidth) {
+        for (const label of labels) {
+            if (row.width + label.width + (row.width ? this.settings.labels.padding : 0) > maxWidth) {
                 if (addRow(row) === false) {
                     row = null;
                     break;
                 }
 
                 row = {
-                    width: legendWidth,
-                    height: legendHeight,
+                    width: label.width,
+                    height: label.height,
                     labels: [label],
                 };
 
@@ -194,8 +190,8 @@ export default class Legend extends Layer {
                 row.width += this.settings.labels.padding;
             }
 
-            row.width += legendWidth;
-            row.height = Math.max(row.height, legendHeight);
+            row.width += label.width;
+            row.height = Math.max(row.height, label.height);
             row.labels.push(label);
         }
 
@@ -203,8 +199,10 @@ export default class Legend extends Layer {
             addRow(row);
         }
 
+        const rowHeight = rows.reduce((total, row) => total + row.height, 0);
+        const rowSpacing = this.settings.labels.padding * Math.max(0, rows.length - 1);
         const rectWidth = Math.max(0, ...rows.map((row) => row.width));
-        const rectHeight = rows.reduce((acc, v) => acc + v.height, 0) + (this.settings.labels.padding * Math.max(0, rows.length - 1));
+        const rectHeight = rowHeight + rowSpacing;
 
         const padding = rows.length ? Math.min(this.settings.labels.padding, chartRect.height - rectHeight) : 0;
 
@@ -238,12 +236,11 @@ export default class Legend extends Layer {
     /**
      * Arranges legend items into vertical columns.
      * @param {Rect} chartRect The remaining chart rectangle.
-     * @param {object[]} datasets The datasets.
-     * @param {string[][]} labels The wrapped labels.
+     * @param {LegendLabel[]} labels The measured legend entries.
      * @param {number} maxWidth The maximum width.
      * @param {number} maxHeight The maximum height.
      */
-    #calculateVertical(chartRect, datasets, labels, maxWidth, maxHeight) {
+    #calculateVertical(chartRect, labels, maxWidth, maxHeight) {
         let width = 0;
 
         let col = {
@@ -273,31 +270,16 @@ export default class Legend extends Layer {
             return true;
         };
 
-        for (const [i, lines] of labels.entries()) {
-            const metrics = lines.map((line) => measureText(this.context, line));
-
-            const labelHeight = lines.length * this.#lineHeight;
-            const labelWidth = Math.max(0, ...metrics.map((metric) => metric.width));
-
-            const legendHeight = Math.max(this.settings.labels.boxHeight, labelHeight);
-            const legendWidth = this.settings.labels.boxWidth + labelWidth + this.#spacing;
-
-            const label = {
-                dataset: datasets[i],
-                lines,
-                metrics,
-                width: legendWidth,
-            };
-
-            if (col.height + legendHeight + (col.height ? this.settings.labels.padding : 0) > maxHeight) {
+        for (const label of labels) {
+            if (col.height + label.height + (col.height ? this.settings.labels.padding : 0) > maxHeight) {
                 if (addCol(col) === false) {
                     col = null;
                     break;
                 }
 
                 col = {
-                    width: legendWidth,
-                    height: legendHeight,
+                    width: label.width,
+                    height: label.height,
                     labels: [label],
                 };
 
@@ -308,8 +290,8 @@ export default class Legend extends Layer {
                 col.height += this.settings.labels.padding;
             }
 
-            col.width = Math.max(col.width, legendWidth);
-            col.height += legendHeight;
+            col.width = Math.max(col.width, label.width);
+            col.height += label.height;
             col.labels.push(label);
         }
 
@@ -317,7 +299,9 @@ export default class Legend extends Layer {
             addCol(col);
         }
 
-        const rectWidth = cols.reduce((acc, v) => acc + v.width, 0) + (this.settings.labels.padding * Math.max(0, cols.length - 1));
+        const columnWidth = cols.reduce((total, col) => total + col.width, 0);
+        const columnSpacing = this.settings.labels.padding * Math.max(0, cols.length - 1);
+        const rectWidth = columnWidth + columnSpacing;
         const rectHeight = Math.max(0, ...cols.map((col) => col.height));
 
         const padding = cols.length ? Math.min(this.settings.labels.padding, chartRect.width - rectWidth) : 0;
@@ -350,6 +334,32 @@ export default class Legend extends Layer {
     }
 
     /**
+     * Measures entries once for horizontal and vertical layout and rendering.
+     * @param {LegendItem[]} datasets The dataset or slice keys.
+     * @param {number} maxWidth The maximum entry width.
+     * @returns {LegendLabel[]} The measured legend entries.
+     */
+    #measureLabels(datasets, maxWidth) {
+        const { boxWidth, boxHeight } = this.settings.labels;
+        const availableWidth = maxWidth - boxWidth - this.#spacing;
+
+        return datasets.map((dataset) => {
+            const lines = wrapLines(this.context, dataset.label, availableWidth);
+            const metrics = lines.map((line) => measureText(this.context, line));
+            const textWidth = Math.max(0, ...metrics.map((metric) => metric.width));
+            const textHeight = lines.length * this.#lineHeight;
+
+            return {
+                dataset,
+                lines,
+                metrics,
+                width: boxWidth + textWidth + this.#spacing,
+                height: Math.max(boxHeight, textHeight),
+            };
+        });
+    }
+
+    /**
      * Renders the horizontal legend rows.
      */
     #renderHorizontal() {
@@ -369,11 +379,8 @@ export default class Legend extends Layer {
             }
 
             for (const label of row.labels) {
-                const textWidth = Math.max(0, ...label.metrics.map((metric) => metric.width));
-                const width = this.settings.labels.boxWidth + this.#spacing + textWidth;
-
-                this.#renderLabel(label, x, y, width, row.height);
-                x += width + this.settings.labels.padding;
+                this.#renderLabel(label, x, y, label.width, row.height);
+                x += label.width + this.settings.labels.padding;
             }
 
             y += row.height + this.settings.labels.padding;
@@ -382,7 +389,7 @@ export default class Legend extends Layer {
 
     /**
      * Draws a legend swatch, label, hidden state, and interactive hit area.
-     * @param {object} label The wrapped legend entry.
+     * @param {LegendLabel} label The measured legend entry.
      * @param {number} x The left edge.
      * @param {number} y The top edge.
      * @param {number} width The item width.
@@ -451,7 +458,6 @@ export default class Legend extends Layer {
             let y = 0;
 
             for (const label of col.labels) {
-                const height = Math.max(label.lines.length * this.#lineHeight, this.settings.labels.boxHeight);
                 let labelX = x;
 
                 switch (this.settings.labels.textAlign) {
@@ -464,8 +470,8 @@ export default class Legend extends Layer {
                         break;
                 }
 
-                this.#renderLabel(label, labelX, y, label.width, height);
-                y += height + this.settings.labels.padding;
+                this.#renderLabel(label, labelX, y, label.width, label.height);
+                y += label.height + this.settings.labels.padding;
             }
 
             x += col.width + this.settings.labels.padding;
