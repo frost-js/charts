@@ -370,9 +370,11 @@ export default class Chart {
         this.#window = view;
 
         try {
-            this.#inputOptions = mergeOptions(this.constructor.defaults, options);
-            this.#settings = normalizeOptions(mergeOptions(this.#inputOptions), this.constructor.defaults);
-            this.#data = normalizeData(this.#settings.data, this.#settings.type, this.#settings.stacked);
+            const { data, ...inputOptions } = mergeOptions(this.constructor.defaults, options);
+
+            this.#inputOptions = inputOptions;
+            this.#settings = normalizeOptions(mergeOptions(inputOptions), this.constructor.defaults);
+            this.#data = normalizeData(data, this.#settings.type, this.#settings.stacked);
             this.#updateOptions();
 
             this.#canvas = node.ownerDocument.createElement('canvas');
@@ -390,9 +392,8 @@ export default class Chart {
 
             this.#build();
             this.#events();
-            this.resize();
-            this.#updateDescription();
-            this.run();
+            this.#resize();
+            this.update();
 
             Chart.#instances.set(node, this);
         } catch (error) {
@@ -538,7 +539,7 @@ export default class Chart {
      * @returns {NormalizedChartDataset[]} The datasets.
      */
     getData() {
-        return this.#data ? mergeOptions(this.#data).datasets : [];
+        return this.#data ? this.#data.datasets.map((dataset) => mergeOptions(dataset)) : [];
     }
 
     /**
@@ -623,53 +624,16 @@ export default class Chart {
             return;
         }
 
-        this.#stop();
-        this.#clearActive();
-        this.#progress = 1;
-
-        for (const layer of Object.values(this.#layers)) {
-            layer.render();
-        }
-
-        this.#syncLegendControls();
-        this.draw();
+        this.#render(1);
     }
 
     /**
      * Measures the container and updates the visible and offscreen canvases.
      */
     resize() {
-        if (!this.node) {
+        if (!this.node || !this.#resize()) {
             return;
         }
-
-        // Exclude the generated canvas from intrinsic container measurements.
-        // Otherwise an auto-height container grows on each observer callback.
-        this.#canvas.style.display = 'none';
-
-        const style = this.#window.getComputedStyle(this.node);
-        const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-        const verticalPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-        const width = Math.max(0, this.node.clientWidth - horizontalPadding);
-        const availableHeight = Math.max(0, this.node.clientHeight - verticalPadding);
-        const height = availableHeight || 300;
-        const pixelRatio = Math.max(1, this.#window.devicePixelRatio || 1);
-
-        this.#canvas.style.display = 'block';
-
-        if (width === this.#width && height === this.#height && pixelRatio === this.#pixelRatio) {
-            return;
-        }
-
-        this.#width = width;
-        this.#height = height;
-        this.#pixelRatio = pixelRatio;
-
-        this.#canvas.width = Math.round(width * pixelRatio);
-        this.#canvas.height = Math.round(height * pixelRatio);
-        this.#canvas.style.width = `${width}px`;
-        this.#canvas.style.height = `${height}px`;
-        this.#context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 
         this.calculate();
         this.render();
@@ -683,8 +647,6 @@ export default class Chart {
             return;
         }
 
-        this.#stop();
-
         const reducedMotion = this.#window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         const duration = reducedMotion ? 0 : this.#settings.animation.duration;
 
@@ -692,6 +654,8 @@ export default class Chart {
             this.render();
             return;
         }
+
+        this.#render(0);
 
         const start = this.#window.performance.now();
         const tick = (now) => {
@@ -717,10 +681,6 @@ export default class Chart {
                 this.#frame = this.#window.requestAnimationFrame(tick);
             }
         };
-
-        this.#progress = 0;
-        this.#layers.chart.render(0);
-        this.draw();
 
         this.#frame = this.#window.requestAnimationFrame(tick);
     }
@@ -796,9 +756,10 @@ export default class Chart {
             return;
         }
 
-        const inputOptions = mergeOptions(this.#inputOptions, settings);
+        const { data: inputData, ...changedSettings } = settings;
+        const inputOptions = mergeOptions(this.#inputOptions, changedSettings);
         const options = normalizeOptions(mergeOptions(inputOptions), this.constructor.defaults);
-        const data = normalizeData(settings.data ?? this.#data, options.type, options.stacked);
+        const data = normalizeData(inputData ?? this.#data, options.type, options.stacked);
 
         this.#stop();
 
@@ -811,7 +772,7 @@ export default class Chart {
         this.#build();
 
         if (this.#settings.responsive) {
-            this.resize();
+            this.#resize();
         }
 
         this.update();
@@ -826,7 +787,6 @@ export default class Chart {
         }
 
         this.calculate();
-        this.render();
         this.#updateDescription();
         this.run();
     }
@@ -1008,6 +968,59 @@ export default class Chart {
                 this.#hiddenItems.delete(key);
             }
         }
+    }
+
+    /**
+     * Renders every layer at the starting or final animation position.
+     * @param {number} progress The animation fraction.
+     */
+    #render(progress) {
+        this.#stop();
+        this.#clearActive();
+        this.#progress = progress;
+
+        for (const layer of Object.values(this.#layers)) {
+            layer.render(progress);
+        }
+
+        this.#syncLegendControls();
+        this.draw();
+    }
+
+    /**
+     * Updates canvas dimensions without recalculating or drawing the layers.
+     * @returns {boolean} Whether the dimensions or pixel ratio changed.
+     */
+    #resize() {
+        // Exclude the generated canvas from intrinsic container measurements.
+        // Otherwise an auto-height container grows on each observer callback.
+        this.#canvas.style.display = 'none';
+
+        const style = this.#window.getComputedStyle(this.node);
+        const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+        const verticalPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+        const width = Math.max(0, this.node.clientWidth - horizontalPadding);
+        const availableHeight = Math.max(0, this.node.clientHeight - verticalPadding);
+        const height = availableHeight || 300;
+        const pixelRatio = Math.max(1, this.#window.devicePixelRatio || 1);
+
+        this.#canvas.style.display = 'block';
+
+        if (width === this.#width && height === this.#height && pixelRatio === this.#pixelRatio) {
+            return false;
+        }
+
+        this.#width = width;
+        this.#height = height;
+        this.#pixelRatio = pixelRatio;
+
+        this.#canvas.width = Math.round(width * pixelRatio);
+        this.#canvas.height = Math.round(height * pixelRatio);
+        this.#canvas.style.width = `${width}px`;
+        this.#canvas.style.height = `${height}px`;
+        this.#context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+        return true;
     }
 
     /**

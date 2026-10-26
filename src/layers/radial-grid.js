@@ -22,12 +22,12 @@ export default class RadialGrid extends Layer {
     calculate(chartRect, next) {
         this.rect = chartRect.clone();
 
-        const labels = this.chart.getLabels();
+        const labels = this.chart.options.data.labels;
 
         this.#labels = labels;
 
         if (this.chart.options.type === 'polarArea') {
-            this.#labels = this.chart.getData().flatMap((dataset, datasetIndex) => {
+            this.#labels = this.chart.options.data.datasets.flatMap((dataset, datasetIndex) => {
                 return labels.filter((label, index) => this.chart.isDataVisible(datasetIndex, index));
             });
         }

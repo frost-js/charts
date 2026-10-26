@@ -25,14 +25,14 @@ export default class RadarChart extends Layer {
      * Calculates radial targets while retaining the last visible positions.
      */
     data() {
-        const labels = this.chart.getLabels();
+        const labels = this.chart.options.data.labels;
         const radius = this.rect.width / 2;
         const maximum = this.chart.getScaleMax();
         const centerX = this.rect.centerX - this.canvasRect.x;
         const centerY = this.rect.centerY - this.canvasRect.y;
 
         this.#oldPoints = this.#renderedPoints;
-        this.#points = this.chart.getData().map((dataset, datasetIndex) => {
+        this.#points = this.chart.options.data.datasets.map((dataset, datasetIndex) => {
             if (!this.chart.isDatasetVisible(datasetIndex)) {
                 return [];
             }

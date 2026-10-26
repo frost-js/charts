@@ -18,7 +18,7 @@ export default class PolarAreaChart extends Layer {
      * Calculates target radii and angles for the visible data items.
      */
     data() {
-        const labels = this.chart.getLabels();
+        const labels = this.chart.options.data.labels;
         const values = this.chart.getValues();
         const angle = values.length ? Math.PI * 2 / values.length : 0;
         const radius = this.rect.width / 2;
@@ -28,7 +28,7 @@ export default class PolarAreaChart extends Layer {
         this.#oldSectors = this.#renderedSectors;
         this.#sectors = new Map();
 
-        for (const [datasetIndex, dataset] of this.chart.getData().entries()) {
+        for (const [datasetIndex, dataset] of this.chart.options.data.datasets.entries()) {
             for (const [index, value] of dataset.data.entries()) {
                 if (!this.chart.isDataVisible(datasetIndex, index)) {
                     continue;

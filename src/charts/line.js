@@ -21,7 +21,7 @@ export default class LineChart extends Layer {
     calculateCanvas() {
         super.calculateCanvas();
 
-        const datasets = this.chart.getData();
+        const datasets = this.chart.options.data.datasets;
         const padding = datasets.reduce((size, dataset) => {
             return Math.max(size, dataset.pointRadius + dataset.borderWidth / 2);
         }, 0);
@@ -37,8 +37,8 @@ export default class LineChart extends Layer {
      */
     data() {
         const scatter = this.chart.options.type === 'scatter';
-        const labels = this.chart.getLabels();
-        const datasets = this.chart.getData();
+        const labels = this.chart.options.data.labels;
+        const datasets = this.chart.options.data.datasets;
 
         const minX = this.chart.getScaleMin('x');
         const maxX = this.chart.getScaleMax('x');

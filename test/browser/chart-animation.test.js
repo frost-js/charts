@@ -45,6 +45,41 @@ test.describe('Chart animation', () => {
             }
         }
 
+        for (const duration of [0, 1000]) {
+            test(`draws once per update before scheduling frames with a ${duration}ms duration`, async ({ page }) => {
+                await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+                const counts = await page.evaluate((duration) => {
+                    const draw = Chart.prototype.draw;
+                    let count = 0;
+
+                    Chart.prototype.draw = function() {
+                        count++;
+
+                        return draw.call(this);
+                    };
+
+                    window.makeChart({ animation: { duration } });
+                    const construction = count;
+
+                    count = 0;
+                    window.chart.setData({ labels: ['New'], datasets: [{ data: [30] }] });
+                    const data = count;
+
+                    count = 0;
+                    document.getElementById('chart').style.width = '500px';
+                    window.chart.setSettings({ title: { text: 'Updated' } });
+                    const settings = count;
+
+                    return { construction, data, settings };
+                }, duration);
+
+                expect(counts.construction).toBe(1);
+                expect(counts.data).toBe(1);
+                expect(counts.settings).toBe(1);
+            });
+        }
+
         test('clamps negative duration to zero on update', async ({ page }) => {
             await page.evaluate(() => {
                 window.makeChart();

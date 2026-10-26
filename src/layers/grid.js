@@ -28,8 +28,8 @@ export default class Grid extends Layer {
 
         this.#horizontal = type === 'bar' && orientation === 'horizontal';
         this.#numericX = type === 'scatter' || this.#horizontal;
-        this.#labelsX = this.#numericX ? this.chart.getScale('x') : this.chart.getLabels();
-        this.#labelsY = this.#horizontal ? this.chart.getLabels() : this.chart.getScale();
+        this.#labelsX = this.#numericX ? this.chart.getScale('x') : this.chart.options.data.labels;
+        this.#labelsY = this.#horizontal ? this.chart.options.data.labels : this.chart.getScale();
 
         const tickX = Math.min(chartRect.height, this.#tickLength('x'));
         const tickY = Math.min(chartRect.width, this.#tickLength('y'));

@@ -19,7 +19,7 @@ export default class PieChart extends Layer {
     data() {
         const values = this.chart.getValues();
         const largest = values.reduce((max, value) => Math.max(max, value), 0);
-        const labels = this.chart.getLabels();
+        const labels = this.chart.options.data.labels;
 
         // Normalize before summing so large finite values cannot overflow the total.
         const total = largest ? values.reduce((sum, value) => sum + value / largest, 0) : 0;
@@ -27,7 +27,7 @@ export default class PieChart extends Layer {
         this.#oldSlices = this.#renderedSlices;
         this.#slices = [];
 
-        for (const [datasetIndex, dataset] of this.chart.getData().entries()) {
+        for (const [datasetIndex, dataset] of this.chart.options.data.datasets.entries()) {
             const slices = [];
 
             for (const [index, value] of dataset.data.entries()) {

@@ -37,8 +37,8 @@ export default class BarChart extends Layer {
      */
     data() {
         const { orientation, stacked } = this.chart.options;
-        const labels = this.chart.getLabels();
-        const datasets = this.chart.getData();
+        const labels = this.chart.options.data.labels;
+        const datasets = this.chart.options.data.datasets;
         const visible = datasets
             .map((dataset, index) => index)
             .filter((index) => this.chart.isDatasetVisible(index));

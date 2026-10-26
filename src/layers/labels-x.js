@@ -40,7 +40,7 @@ export default class LabelsX extends Layer {
         const { type, orientation } = this.chart.options;
 
         this.#numeric = type === 'scatter' || (type === 'bar' && orientation === 'horizontal');
-        this.#values = this.#numeric ? this.chart.getScale('x') : this.chart.getLabels();
+        this.#values = this.#numeric ? this.chart.getScale('x') : this.chart.options.data.labels;
         this.#labels = this.#values.map((value, index) => {
             const formatted = this.settings.callback ? this.settings.callback(value, index) : value;
 

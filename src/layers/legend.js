@@ -70,14 +70,14 @@ export default class Legend extends Layer {
         const maxWidth = Math.min(this.settings.maxWidth ?? availableWidth, availableWidth);
         const maxHeight = Math.min(this.settings.maxHeight ?? availableHeight, availableHeight);
 
-        let datasets = this.chart.getData().map((dataset, datasetIndex) => ({
+        let datasets = this.chart.options.data.datasets.map((dataset, datasetIndex) => ({
             ...dataset,
             datasetIndex,
             visible: this.chart.isDatasetVisible(datasetIndex),
         }));
 
         if (['pie', 'donut', 'polarArea'].includes(this.chart.options.type)) {
-            const labels = this.chart.getLabels();
+            const labels = this.chart.options.data.labels;
 
             datasets = datasets.flatMap((dataset) => {
                 return labels.map((label, index) => ({

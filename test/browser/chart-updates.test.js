@@ -118,6 +118,18 @@ test.describe('Chart updates', () => {
             await expect(page.locator('canvas')).toHaveCount(1);
         });
 
+        test('retains the latest data when changing unrelated settings', async ({ page }) => {
+            await page.evaluate(() => {
+                window.chart.setData({ labels: ['Current'], datasets: [{ data: [30] }] });
+                window.chart.setSettings({ title: { text: 'Updated' } });
+            });
+
+            expect(await page.evaluate(() => window.chart.getLabels())).toEqual(['Current']);
+            expect(await page.evaluate(() => window.chart.getValues())).toEqual([30]);
+            expect(await page.evaluate(() => window.chart.options.data.labels)).toEqual(['Current']);
+            expect(await page.evaluate(() => window.chart.options.data.datasets[0].data)).toEqual([30]);
+        });
+
         test('updates inherited fonts while retaining layer overrides', async ({ page }) => {
             await page.evaluate(() => window.chart.setSettings({ font: { family: 'serif', size: 16 } }));
 

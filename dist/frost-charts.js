@@ -569,8 +569,8 @@
 		*/
 		data() {
 			const { orientation, stacked } = this.chart.options;
-			const labels = this.chart.getLabels();
-			const datasets = this.chart.getData();
+			const labels = this.chart.options.data.labels;
+			const datasets = this.chart.options.data.datasets;
 			const visible = datasets.map((dataset, index) => index).filter((index) => this.chart.isDatasetVisible(index));
 			this.#horizontal = orientation === "horizontal";
 			const categorySize = this.#horizontal ? this.rect.height : this.rect.width;
@@ -708,7 +708,7 @@
 		*/
 		calculateCanvas() {
 			super.calculateCanvas();
-			const padding = this.chart.getData().reduce((size, dataset) => {
+			const padding = this.chart.options.data.datasets.reduce((size, dataset) => {
 				return Math.max(size, dataset.pointRadius + dataset.borderWidth / 2);
 			}, 0);
 			this.canvasRect.x -= padding;
@@ -721,8 +721,8 @@
 		*/
 		data() {
 			const scatter = this.chart.options.type === "scatter";
-			const labels = this.chart.getLabels();
-			const datasets = this.chart.getData();
+			const labels = this.chart.options.data.labels;
+			const datasets = this.chart.options.data.datasets;
 			const minX = this.chart.getScaleMin("x");
 			const maxX = this.chart.getScaleMax("x");
 			const min = this.chart.getScaleMin();
@@ -881,11 +881,11 @@
 		data() {
 			const values = this.chart.getValues();
 			const largest = values.reduce((max, value) => Math.max(max, value), 0);
-			const labels = this.chart.getLabels();
+			const labels = this.chart.options.data.labels;
 			const total = largest ? values.reduce((sum, value) => sum + value / largest, 0) : 0;
 			this.#oldSlices = this.#renderedSlices;
 			this.#slices = [];
-			for (const [datasetIndex, dataset] of this.chart.getData().entries()) {
+			for (const [datasetIndex, dataset] of this.chart.options.data.datasets.entries()) {
 				const slices = [];
 				for (const [index, value] of dataset.data.entries()) slices.push({
 					angle: total && this.chart.isDataVisible(datasetIndex, index) ? value / largest / total * Math.PI * 2 : 0,
@@ -982,7 +982,7 @@
 		* Calculates target radii and angles for the visible data items.
 		*/
 		data() {
-			const labels = this.chart.getLabels();
+			const labels = this.chart.options.data.labels;
 			const values = this.chart.getValues();
 			const angle = values.length ? Math.PI * 2 / values.length : 0;
 			const radius = this.rect.width / 2;
@@ -990,7 +990,7 @@
 			let start = -Math.PI / 2;
 			this.#oldSectors = this.#renderedSectors;
 			this.#sectors = /* @__PURE__ */ new Map();
-			for (const [datasetIndex, dataset] of this.chart.getData().entries()) for (const [index, value] of dataset.data.entries()) {
+			for (const [datasetIndex, dataset] of this.chart.options.data.datasets.entries()) for (const [index, value] of dataset.data.entries()) {
 				if (!this.chart.isDataVisible(datasetIndex, index)) continue;
 				this.#sectors.set(`${datasetIndex}:${index}`, {
 					start,
@@ -1091,13 +1091,13 @@
 		* Calculates radial targets while retaining the last visible positions.
 		*/
 		data() {
-			const labels = this.chart.getLabels();
+			const labels = this.chart.options.data.labels;
 			const radius = this.rect.width / 2;
 			const maximum = this.chart.getScaleMax();
 			const centerX = this.rect.centerX - this.canvasRect.x;
 			const centerY = this.rect.centerY - this.canvasRect.y;
 			this.#oldPoints = this.#renderedPoints;
-			this.#points = this.chart.getData().map((dataset, datasetIndex) => {
+			this.#points = this.chart.options.data.datasets.map((dataset, datasetIndex) => {
 				if (!this.chart.isDatasetVisible(datasetIndex)) return [];
 				return dataset.data.map((value, index) => {
 					const angle = index * Math.PI * 2 / labels.length - Math.PI / 2;
@@ -1250,8 +1250,8 @@
 			const { type, orientation } = this.chart.options;
 			this.#horizontal = type === "bar" && orientation === "horizontal";
 			this.#numericX = type === "scatter" || this.#horizontal;
-			this.#labelsX = this.#numericX ? this.chart.getScale("x") : this.chart.getLabels();
-			this.#labelsY = this.#horizontal ? this.chart.getLabels() : this.chart.getScale();
+			this.#labelsX = this.#numericX ? this.chart.getScale("x") : this.chart.options.data.labels;
+			this.#labelsY = this.#horizontal ? this.chart.options.data.labels : this.chart.getScale();
 			const tickX = Math.min(chartRect.height, this.#tickLength("x"));
 			const tickY = Math.min(chartRect.width, this.#tickLength("y"));
 			chartRect.x += tickY;
@@ -1473,7 +1473,7 @@
 			updateFont(this.context, this.settings.font);
 			const { type, orientation } = this.chart.options;
 			this.#numeric = type === "scatter" || type === "bar" && orientation === "horizontal";
-			this.#values = this.#numeric ? this.chart.getScale("x") : this.chart.getLabels();
+			this.#values = this.#numeric ? this.chart.getScale("x") : this.chart.options.data.labels;
 			this.#labels = this.#values.map((value, index) => {
 				const formatted = this.settings.callback ? this.settings.callback(value, index) : value;
 				return String(formatted);
@@ -1556,7 +1556,7 @@
 			updateFont(this.context, this.settings.font);
 			const { type, orientation } = this.chart.options;
 			this.#categorical = type === "bar" && orientation === "horizontal";
-			this.#values = this.#categorical ? this.chart.getLabels() : this.chart.getScale();
+			this.#values = this.#categorical ? this.chart.options.data.labels : this.chart.getScale();
 			this.#labels = this.#values.map((value, index) => {
 				const formatted = this.settings.callback ? this.settings.callback(value, index) : value;
 				return String(formatted);
@@ -1652,7 +1652,7 @@
 			const availableHeight = vertical ? this.rect.height : this.rect.height / 2;
 			const maxWidth = Math.min(this.settings.maxWidth ?? availableWidth, availableWidth);
 			const maxHeight = Math.min(this.settings.maxHeight ?? availableHeight, availableHeight);
-			let datasets = this.chart.getData().map((dataset, datasetIndex) => ({
+			let datasets = this.chart.options.data.datasets.map((dataset, datasetIndex) => ({
 				...dataset,
 				datasetIndex,
 				visible: this.chart.isDatasetVisible(datasetIndex)
@@ -1662,7 +1662,7 @@
 				"donut",
 				"polarArea"
 			].includes(this.chart.options.type)) {
-				const labels = this.chart.getLabels();
+				const labels = this.chart.options.data.labels;
 				datasets = datasets.flatMap((dataset) => {
 					return labels.map((label, index) => ({
 						...dataset,
@@ -1964,9 +1964,9 @@
 		*/
 		calculate(chartRect, next) {
 			this.rect = chartRect.clone();
-			const labels = this.chart.getLabels();
+			const labels = this.chart.options.data.labels;
 			this.#labels = labels;
-			if (this.chart.options.type === "polarArea") this.#labels = this.chart.getData().flatMap((dataset, datasetIndex) => {
+			if (this.chart.options.type === "polarArea") this.#labels = this.chart.options.data.datasets.flatMap((dataset, datasetIndex) => {
 				return labels.filter((label, index) => this.chart.isDataVisible(datasetIndex, index));
 			});
 			let paddingX = 0;
@@ -2888,9 +2888,10 @@
 			this.#node = node;
 			this.#window = view;
 			try {
-				this.#inputOptions = mergeOptions(this.constructor.defaults, options);
-				this.#settings = normalizeOptions(mergeOptions(this.#inputOptions), this.constructor.defaults);
-				this.#data = normalizeData(this.#settings.data, this.#settings.type, this.#settings.stacked);
+				const { data, ...inputOptions } = mergeOptions(this.constructor.defaults, options);
+				this.#inputOptions = inputOptions;
+				this.#settings = normalizeOptions(mergeOptions(inputOptions), this.constructor.defaults);
+				this.#data = normalizeData(data, this.#settings.type, this.#settings.stacked);
 				this.#updateOptions();
 				this.#canvas = node.ownerDocument.createElement("canvas");
 				this.#canvas.setAttribute("role", "img");
@@ -2901,9 +2902,8 @@
 				this.node.append(this.#canvas);
 				this.#build();
 				this.#events();
-				this.resize();
-				this.#updateDescription();
-				this.run();
+				this.#resize();
+				this.update();
 				Chart.#instances.set(node, this);
 			} catch (error) {
 				this.dispose();
@@ -3006,7 +3006,7 @@
 		* @returns {NormalizedChartDataset[]} The datasets.
 		*/
 		getData() {
-			return this.#data ? mergeOptions(this.#data).datasets : [];
+			return this.#data ? this.#data.datasets.map((dataset) => mergeOptions(dataset)) : [];
 		}
 		/**
 		* Gets a copy of the category labels.
@@ -3078,35 +3078,13 @@
 		*/
 		render() {
 			if (!this.node) return;
-			this.#stop();
-			this.#clearActive();
-			this.#progress = 1;
-			for (const layer of Object.values(this.#layers)) layer.render();
-			this.#syncLegendControls();
-			this.draw();
+			this.#render(1);
 		}
 		/**
 		* Measures the container and updates the visible and offscreen canvases.
 		*/
 		resize() {
-			if (!this.node) return;
-			this.#canvas.style.display = "none";
-			const style = this.#window.getComputedStyle(this.node);
-			const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-			const verticalPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-			const width = Math.max(0, this.node.clientWidth - horizontalPadding);
-			const height = Math.max(0, this.node.clientHeight - verticalPadding) || 300;
-			const pixelRatio = Math.max(1, this.#window.devicePixelRatio || 1);
-			this.#canvas.style.display = "block";
-			if (width === this.#width && height === this.#height && pixelRatio === this.#pixelRatio) return;
-			this.#width = width;
-			this.#height = height;
-			this.#pixelRatio = pixelRatio;
-			this.#canvas.width = Math.round(width * pixelRatio);
-			this.#canvas.height = Math.round(height * pixelRatio);
-			this.#canvas.style.width = `${width}px`;
-			this.#canvas.style.height = `${height}px`;
-			this.#context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+			if (!this.node || !this.#resize()) return;
 			this.calculate();
 			this.render();
 		}
@@ -3115,12 +3093,12 @@
 		*/
 		run() {
 			if (!this.node) return;
-			this.#stop();
 			const duration = this.#window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : this.#settings.animation.duration;
 			if (!duration || !this.getValues().length) {
 				this.render();
 				return;
 			}
+			this.#render(0);
 			const start = this.#window.performance.now();
 			const tick = (now) => {
 				this.#frame = null;
@@ -3133,9 +3111,6 @@
 				else this.draw();
 				if (progress < 1) this.#frame = this.#window.requestAnimationFrame(tick);
 			};
-			this.#progress = 0;
-			this.#layers.chart.render(0);
-			this.draw();
 			this.#frame = this.#window.requestAnimationFrame(tick);
 		}
 		/**
@@ -3188,9 +3163,10 @@
 		*/
 		setSettings(settings = {}) {
 			if (!this.node) return;
-			const inputOptions = mergeOptions(this.#inputOptions, settings);
+			const { data: inputData, ...changedSettings } = settings;
+			const inputOptions = mergeOptions(this.#inputOptions, changedSettings);
 			const options = normalizeOptions(mergeOptions(inputOptions), this.constructor.defaults);
-			const data = normalizeData(settings.data ?? this.#data, options.type, options.stacked);
+			const data = normalizeData(inputData ?? this.#data, options.type, options.stacked);
 			this.#stop();
 			this.#inputOptions = inputOptions;
 			this.#settings = options;
@@ -3198,7 +3174,7 @@
 			this.#updateOptions();
 			this.#pruneVisibility();
 			this.#build();
-			if (this.#settings.responsive) this.resize();
+			if (this.#settings.responsive) this.#resize();
 			this.update();
 		}
 		/**
@@ -3207,7 +3183,6 @@
 		update() {
 			if (!this.node) return;
 			this.calculate();
-			this.render();
 			this.#updateDescription();
 			this.run();
 		}
@@ -3331,6 +3306,42 @@
 				const [datasetIndex, index] = key.split(":").map(Number);
 				if (this.#data.datasets[datasetIndex]?.data[index] == null) this.#hiddenItems.delete(key);
 			}
+		}
+		/**
+		* Renders every layer at the starting or final animation position.
+		* @param {number} progress The animation fraction.
+		*/
+		#render(progress) {
+			this.#stop();
+			this.#clearActive();
+			this.#progress = progress;
+			for (const layer of Object.values(this.#layers)) layer.render(progress);
+			this.#syncLegendControls();
+			this.draw();
+		}
+		/**
+		* Updates canvas dimensions without recalculating or drawing the layers.
+		* @returns {boolean} Whether the dimensions or pixel ratio changed.
+		*/
+		#resize() {
+			this.#canvas.style.display = "none";
+			const style = this.#window.getComputedStyle(this.node);
+			const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+			const verticalPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+			const width = Math.max(0, this.node.clientWidth - horizontalPadding);
+			const height = Math.max(0, this.node.clientHeight - verticalPadding) || 300;
+			const pixelRatio = Math.max(1, this.#window.devicePixelRatio || 1);
+			this.#canvas.style.display = "block";
+			if (width === this.#width && height === this.#height && pixelRatio === this.#pixelRatio) return false;
+			this.#width = width;
+			this.#height = height;
+			this.#pixelRatio = pixelRatio;
+			this.#canvas.width = Math.round(width * pixelRatio);
+			this.#canvas.height = Math.round(height * pixelRatio);
+			this.#canvas.style.width = `${width}px`;
+			this.#canvas.style.height = `${height}px`;
+			this.#context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+			return true;
 		}
 		/**
 		* Updates the tooltip and pie highlight for the current pointer position.

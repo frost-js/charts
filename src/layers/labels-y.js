@@ -39,7 +39,7 @@ export default class LabelsY extends Layer {
         const { type, orientation } = this.chart.options;
 
         this.#categorical = type === 'bar' && orientation === 'horizontal';
-        this.#values = this.#categorical ? this.chart.getLabels() : this.chart.getScale();
+        this.#values = this.#categorical ? this.chart.options.data.labels : this.chart.getScale();
         this.#labels = this.#values.map((value, index) => {
             const formatted = this.settings.callback ? this.settings.callback(value, index) : value;
 
