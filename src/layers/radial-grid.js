@@ -2,7 +2,7 @@
 /** @import Rect from '../rect.js'; */
 /** @import { LayerLayoutCallback } from './layer.js'; */
 
-import { measureText, updateFont } from '../helpers.js';
+import { updateFont } from '../helpers.js';
 import { getScalePosition } from '../scale.js';
 import Layer from './layer.js';
 
@@ -47,7 +47,7 @@ export default class RadialGrid extends Layer {
             updateFont(this.context, font);
 
             const maxWidth = this.#labels.reduce((maximum, label) => {
-                return Math.max(maximum, measureText(this.context, label).width);
+                return Math.max(maximum, this.context.measureText(label).width);
             }, 0);
 
             paddingX = Math.min(chartRect.width / 4, maxWidth + padding);

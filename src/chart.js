@@ -587,11 +587,25 @@ export default class Chart {
             return [];
         }
 
-        const values = this.#data.datasets.flatMap((dataset, datasetIndex) => {
-            return dataset.data.filter((value, index) => this.isDataVisible(datasetIndex, index));
-        });
+        const circular = ['pie', 'donut', 'polarArea'].includes(this.#settings.type);
+        const scatter = this.#settings.type === 'scatter';
+        const values = [];
 
-        return this.#settings.type === 'scatter' ? values.map((point) => point[axis]) : values;
+        for (const [datasetIndex, dataset] of this.#data.datasets.entries()) {
+            if (!this.isDatasetVisible(datasetIndex)) {
+                continue;
+            }
+
+            for (const [index, value] of dataset.data.entries()) {
+                if (circular && this.#hiddenItems.has(`${datasetIndex}:${index}`)) {
+                    continue;
+                }
+
+                values.push(scatter ? value[axis] : value);
+            }
+        }
+
+        return values;
     }
 
     /**

@@ -70,10 +70,6 @@ export default class BarChart extends Layer {
             let negative = 0;
 
             for (const [slot, datasetIndex] of visible.entries()) {
-                if (!this.chart.isDataVisible(datasetIndex, index)) {
-                    continue;
-                }
-
                 const dataset = datasets[datasetIndex];
                 const value = dataset.data[index];
                 let start = 0;

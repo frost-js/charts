@@ -70,7 +70,7 @@
 			let line = "";
 			for (const word of paragraph.split(/\s+/)) {
 				const nextLine = line ? `${line} ${word}` : word;
-				if (measureText(context, nextLine).width <= maxWidth) {
+				if (context.measureText(nextLine).width <= maxWidth) {
 					line = nextLine;
 					continue;
 				}
@@ -78,8 +78,12 @@
 					lines.push(line);
 					line = "";
 				}
+				if (context.measureText(word).width <= maxWidth) {
+					line = word;
+					continue;
+				}
 				for (const character of word) {
-					if (line && measureText(context, line + character).width > maxWidth) {
+					if (line && context.measureText(line + character).width > maxWidth) {
 						lines.push(line);
 						line = "";
 					}
@@ -593,7 +597,6 @@
 				let positive = 0;
 				let negative = 0;
 				for (const [slot, datasetIndex] of visible.entries()) {
-					if (!this.chart.isDataVisible(datasetIndex, index)) continue;
 					const dataset = datasets[datasetIndex];
 					const value = dataset.data[index];
 					let start = 0;
@@ -1643,7 +1646,7 @@
 				return;
 			}
 			updateFont(this.context, this.settings.labels.font);
-			this.#spacing = measureText(this.context, " ").width;
+			this.#spacing = this.context.measureText(" ").width;
 			this.#lineHeight = this.settings.labels.font.lineHeight * this.settings.labels.font.size;
 			this.#rows = [];
 			this.#cols = [];
@@ -1710,7 +1713,7 @@
 		* @param {number} maxHeight The maximum height.
 		*/
 		#calculateHorizontal(chartRect, labels, maxWidth, maxHeight) {
-			let height = 0;
+			let rectHeight = 0;
 			let row = {
 				width: 0,
 				height: 0,
@@ -1720,9 +1723,9 @@
 			const addRow = (row) => {
 				if (!row.labels.length) return true;
 				if (row.width > maxWidth) return false;
-				if (height + row.height + (rows.length ? this.settings.labels.padding : 0) > maxHeight) return false;
+				if (rectHeight + row.height + (rows.length ? this.settings.labels.padding : 0) > maxHeight) return false;
 				rows.push(row);
-				height += row.height + (rows.length > 1 ? this.settings.labels.padding : 0);
+				rectHeight += row.height + (rows.length > 1 ? this.settings.labels.padding : 0);
 				return true;
 			};
 			for (const label of labels) {
@@ -1744,10 +1747,7 @@
 				row.labels.push(label);
 			}
 			if (row && row.width && row.height) addRow(row);
-			const rowHeight = rows.reduce((total, row) => total + row.height, 0);
-			const rowSpacing = this.settings.labels.padding * Math.max(0, rows.length - 1);
 			const rectWidth = rows.reduce((maximum, row) => Math.max(maximum, row.width), 0);
-			const rectHeight = rowHeight + rowSpacing;
 			const padding = rows.length ? Math.min(this.settings.labels.padding, chartRect.height - rectHeight) : 0;
 			this.#rows = rows;
 			switch (this.settings.align) {
@@ -1775,7 +1775,7 @@
 		* @param {number} maxHeight The maximum height.
 		*/
 		#calculateVertical(chartRect, labels, maxWidth, maxHeight) {
-			let width = 0;
+			let rectWidth = 0;
 			let col = {
 				width: 0,
 				height: 0,
@@ -1785,9 +1785,9 @@
 			const addCol = (col) => {
 				if (!col.labels.length) return true;
 				if (col.height > maxHeight) return false;
-				if (width + col.width + (cols.length ? this.settings.labels.padding : 0) > maxWidth) return false;
+				if (rectWidth + col.width + (cols.length ? this.settings.labels.padding : 0) > maxWidth) return false;
 				cols.push(col);
-				width += col.width + (cols.length > 1 ? this.settings.labels.padding : 0);
+				rectWidth += col.width + (cols.length > 1 ? this.settings.labels.padding : 0);
 				return true;
 			};
 			for (const label of labels) {
@@ -1809,7 +1809,6 @@
 				col.labels.push(label);
 			}
 			if (col && col.width && col.height) addCol(col);
-			const rectWidth = cols.reduce((total, col) => total + col.width, 0) + this.settings.labels.padding * Math.max(0, cols.length - 1);
 			const rectHeight = cols.reduce((maximum, col) => Math.max(maximum, col.height), 0);
 			const padding = cols.length ? Math.min(this.settings.labels.padding, chartRect.width - rectWidth) : 0;
 			this.#cols = cols;
@@ -1979,7 +1978,7 @@
 				const { font, padding } = this.settings.labels;
 				updateFont(this.context, font);
 				const maxWidth = this.#labels.reduce((maximum, label) => {
-					return Math.max(maximum, measureText(this.context, label).width);
+					return Math.max(maximum, this.context.measureText(label).width);
 				}, 0);
 				paddingX = Math.min(chartRect.width / 4, maxWidth + padding);
 				paddingY = Math.min(chartRect.height / 4, font.size * font.lineHeight + padding);
@@ -2242,7 +2241,7 @@
 			const lines = wrapLines(this.context, text, maxWidth);
 			const lineHeight = font.size * font.lineHeight;
 			const textWidth = lines.reduce((maximum, line) => {
-				return Math.max(maximum, measureText(this.context, line).width);
+				return Math.max(maximum, this.context.measureText(line).width);
 			}, 0);
 			const width = Math.min(this.canvasRect.width, textWidth + padding * 2);
 			const height = Math.min(this.canvasRect.height, lines.length * lineHeight + padding * 2);
@@ -3050,10 +3049,21 @@
 		*/
 		getValues(axis = "y") {
 			if (!this.#data) return [];
-			const values = this.#data.datasets.flatMap((dataset, datasetIndex) => {
-				return dataset.data.filter((value, index) => this.isDataVisible(datasetIndex, index));
-			});
-			return this.#settings.type === "scatter" ? values.map((point) => point[axis]) : values;
+			const circular = [
+				"pie",
+				"donut",
+				"polarArea"
+			].includes(this.#settings.type);
+			const scatter = this.#settings.type === "scatter";
+			const values = [];
+			for (const [datasetIndex, dataset] of this.#data.datasets.entries()) {
+				if (!this.isDatasetVisible(datasetIndex)) continue;
+				for (const [index, value] of dataset.data.entries()) {
+					if (circular && this.#hiddenItems.has(`${datasetIndex}:${index}`)) continue;
+					values.push(scatter ? value[axis] : value);
+				}
+			}
+			return values;
 		}
 		/**
 		* Checks whether a dataset is enabled.

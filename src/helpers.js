@@ -87,7 +87,7 @@ export function wrapLines(context, text, maxWidth) {
         for (const word of paragraph.split(/\s+/)) {
             const nextLine = line ? `${line} ${word}` : word;
 
-            if (measureText(context, nextLine).width <= maxWidth) {
+            if (context.measureText(nextLine).width <= maxWidth) {
                 line = nextLine;
                 continue;
             }
@@ -97,8 +97,13 @@ export function wrapLines(context, text, maxWidth) {
                 line = '';
             }
 
+            if (context.measureText(word).width <= maxWidth) {
+                line = word;
+                continue;
+            }
+
             for (const character of word) {
-                if (line && measureText(context, line + character).width > maxWidth) {
+                if (line && context.measureText(line + character).width > maxWidth) {
                     lines.push(line);
                     line = '';
                 }

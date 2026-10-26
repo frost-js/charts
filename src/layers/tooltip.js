@@ -2,7 +2,7 @@
 /** @import { ChartMark, LayerPlacement } from './layer.js'; */
 
 import { formatValue } from '../data.js';
-import { measureText, updateFont, wrapLines } from '../helpers.js';
+import { updateFont, wrapLines } from '../helpers.js';
 import Layer from './layer.js';
 
 /**
@@ -47,7 +47,7 @@ export default class Tooltip extends Layer {
         const lines = wrapLines(this.context, text, maxWidth);
         const lineHeight = font.size * font.lineHeight;
         const textWidth = lines.reduce((maximum, line) => {
-            return Math.max(maximum, measureText(this.context, line).width);
+            return Math.max(maximum, this.context.measureText(line).width);
         }, 0);
 
         const width = Math.min(this.canvasRect.width, textWidth + padding * 2);

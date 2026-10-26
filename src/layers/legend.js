@@ -58,7 +58,7 @@ export default class Legend extends Layer {
 
         updateFont(this.context, this.settings.labels.font);
 
-        this.#spacing = measureText(this.context, ' ').width;
+        this.#spacing = this.context.measureText(' ').width;
         this.#lineHeight = this.settings.labels.font.lineHeight * this.settings.labels.font.size;
 
         this.#rows = [];
@@ -141,7 +141,7 @@ export default class Legend extends Layer {
      * @param {number} maxHeight The maximum height.
      */
     #calculateHorizontal(chartRect, labels, maxWidth, maxHeight) {
-        let height = 0;
+        let rectHeight = 0;
 
         let row = {
             width: 0,
@@ -160,12 +160,12 @@ export default class Legend extends Layer {
                 return false;
             }
 
-            if (height + row.height + (rows.length ? this.settings.labels.padding : 0) > maxHeight) {
+            if (rectHeight + row.height + (rows.length ? this.settings.labels.padding : 0) > maxHeight) {
                 return false;
             }
 
             rows.push(row);
-            height += row.height + (rows.length > 1 ? this.settings.labels.padding : 0);
+            rectHeight += row.height + (rows.length > 1 ? this.settings.labels.padding : 0);
 
             return true;
         };
@@ -199,10 +199,7 @@ export default class Legend extends Layer {
             addRow(row);
         }
 
-        const rowHeight = rows.reduce((total, row) => total + row.height, 0);
-        const rowSpacing = this.settings.labels.padding * Math.max(0, rows.length - 1);
         const rectWidth = rows.reduce((maximum, row) => Math.max(maximum, row.width), 0);
-        const rectHeight = rowHeight + rowSpacing;
 
         const padding = rows.length ? Math.min(this.settings.labels.padding, chartRect.height - rectHeight) : 0;
 
@@ -241,7 +238,7 @@ export default class Legend extends Layer {
      * @param {number} maxHeight The maximum height.
      */
     #calculateVertical(chartRect, labels, maxWidth, maxHeight) {
-        let width = 0;
+        let rectWidth = 0;
 
         let col = {
             width: 0,
@@ -260,12 +257,12 @@ export default class Legend extends Layer {
                 return false;
             }
 
-            if (width + col.width + (cols.length ? this.settings.labels.padding : 0) > maxWidth) {
+            if (rectWidth + col.width + (cols.length ? this.settings.labels.padding : 0) > maxWidth) {
                 return false;
             }
 
             cols.push(col);
-            width += col.width + (cols.length > 1 ? this.settings.labels.padding : 0);
+            rectWidth += col.width + (cols.length > 1 ? this.settings.labels.padding : 0);
 
             return true;
         };
@@ -299,9 +296,6 @@ export default class Legend extends Layer {
             addCol(col);
         }
 
-        const columnWidth = cols.reduce((total, col) => total + col.width, 0);
-        const columnSpacing = this.settings.labels.padding * Math.max(0, cols.length - 1);
-        const rectWidth = columnWidth + columnSpacing;
         const rectHeight = cols.reduce((maximum, col) => Math.max(maximum, col.height), 0);
 
         const padding = cols.length ? Math.min(this.settings.labels.padding, chartRect.width - rectWidth) : 0;
