@@ -1,25 +1,22 @@
 import { expect, test } from '#test';
 import { setupChart } from '../setup/chart.js';
+import { getPixel } from '../support/canvas.js';
 
 test.describe('Radial charts', () => {
     test.beforeEach(setupChart);
 
     test.describe('geometry', () => {
         test('polar area uses equal sectors with radii proportional to values', async ({ page }) => {
-            const pixels = await page.evaluate(() => {
+            await page.evaluate(() => {
                 window.createChart({ type: 'polarArea', scales: { r: { display: false } } });
-
-                const context = document.querySelector('canvas').getContext('2d');
-                const pixel = (x, y) => Array.from(context.getImageData(x, y, 1, 1).data);
-
-                return { first: pixel(340, 180), beyondFirst: pixel(430, 180), second: pixel(140, 200) };
             });
 
-            expect(pixels.first).toEqual([255, 0, 0, 191]);
-            expect(pixels.beyondFirst[3]).toBe(0);
-            expect(pixels.second).toEqual([0, 0, 255, 191]);
-
             const canvas = page.locator('canvas');
+
+            expect(await getPixel(canvas, 340, 180)).toEqual([255, 0, 0, 191]);
+            expect((await getPixel(canvas, 430, 180))[3]).toBe(0);
+            expect(await getPixel(canvas, 140, 200)).toEqual([0, 0, 255, 191]);
+
             const bounds = await canvas.boundingBox();
 
             await page.mouse.move(bounds.x + 340, bounds.y + 180);
@@ -27,7 +24,7 @@ test.describe('Radial charts', () => {
         });
 
         test('radar connects shared category axes and exposes point tooltips', async ({ page }) => {
-            const pixels = await page.evaluate(() => {
+            await page.evaluate(() => {
                 window.createChart({
                     type: 'radar',
                     scales: { r: { display: false } },
@@ -36,19 +33,15 @@ test.describe('Radial charts', () => {
                         datasets: [{ label: 'Profile', data: [10, 20, 10, 20], backgroundColor: '#ff0000', pointRadius: 6 }],
                     },
                 });
-
-                const context = document.querySelector('canvas').getContext('2d');
-                const alpha = (x, y) => context.getImageData(x, y, 1, 1).data[3];
-
-                return { top: alpha(300, 110), right: alpha(480, 200), center: alpha(300, 200), outside: alpha(450, 100) };
             });
 
-            expect(pixels.top).toBe(255);
-            expect(pixels.right).toBe(255);
-            expect(pixels.center).toBe(51);
-            expect(pixels.outside).toBe(0);
-
             const canvas = page.locator('canvas');
+
+            expect((await getPixel(canvas, 300, 110))[3]).toBe(255);
+            expect((await getPixel(canvas, 480, 200))[3]).toBe(255);
+            expect((await getPixel(canvas, 300, 200))[3]).toBe(51);
+            expect((await getPixel(canvas, 450, 100))[3]).toBe(0);
+
             const bounds = await canvas.boundingBox();
 
             await page.mouse.move(bounds.x + 300, bounds.y + 110);

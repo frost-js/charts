@@ -7,7 +7,7 @@ test.describe('Chart interactions', () => {
     test.describe('dataset visibility', () => {
         for (const type of ['bar', 'line', 'area', 'scatter', 'pie', 'donut', 'polarArea', 'radar']) {
             test(`${type} hides and restores datasets without losing values or colors`, async ({ page }) => {
-                const result = await page.evaluate((chartType) => {
+                await page.evaluate((chartType) => {
                     const first = chartType === 'scatter' ? [{ x: 10, y: 20 }] : [20];
                     const second = chartType === 'scatter' ? [{ x: 5, y: 5 }] : [5];
 
@@ -19,30 +19,32 @@ test.describe('Chart interactions', () => {
                             datasets: [{ label: 'First', data: first }, { label: 'Second', data: second }],
                         },
                     });
-
-                    const original = window.chart.getData();
-
-                    window.chart.setDatasetVisibility(0, false);
-                    const hidden = window.chart.getValues();
-                    const maximum = window.chart.getScaleMax();
-
-                    window.chart.setData({ labels: ['A'], datasets: window.chart.getData() });
-                    const retained = !window.chart.isDatasetVisible(0);
-
-                    window.chart.setDatasetVisibility(1, false);
-                    const empty = window.chart.getValues();
-
-                    window.chart.setDatasetVisibility(0, true);
-                    window.chart.setDatasetVisibility(1, true);
-
-                    return { original, restored: window.chart.getData(), hidden, maximum, retained, empty };
                 }, type);
 
-                expect(result.restored).toEqual(result.original);
-                expect(result.hidden).toEqual([5]);
-                expect(result.maximum).toBe(5);
-                expect(result.retained).toBe(true);
-                expect(result.empty).toEqual([]);
+                const original = await page.evaluate(() => window.chart.getData());
+
+                await page.evaluate(() => window.chart.setDatasetVisibility(0, false));
+
+                expect(await page.evaluate(() => window.chart.isDatasetVisible(0))).toBe(false);
+                expect(await page.evaluate(() => window.chart.getValues())).toEqual([5]);
+                expect(await page.evaluate(() => window.chart.getScaleMax())).toBe(5);
+
+                await page.evaluate(() => window.chart.setData({ labels: ['A'], datasets: window.chart.getData() }));
+
+                expect(await page.evaluate(() => window.chart.isDatasetVisible(0))).toBe(false);
+
+                await page.evaluate(() => window.chart.setDatasetVisibility(1, false));
+
+                expect(await page.evaluate(() => window.chart.getValues())).toEqual([]);
+
+                await page.evaluate(() => {
+                    window.chart.setDatasetVisibility(0, true);
+                    window.chart.setDatasetVisibility(1, true);
+                });
+
+                expect(await page.evaluate(() => window.chart.isDatasetVisible(0))).toBe(true);
+                expect(await page.evaluate(() => window.chart.isDatasetVisible(1))).toBe(true);
+                expect(await page.evaluate(() => window.chart.getData())).toEqual(original);
             });
         }
 

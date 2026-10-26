@@ -49,34 +49,36 @@ test.describe('Chart animation', () => {
             test(`draws once per update before scheduling frames with a ${duration}ms duration`, async ({ page }) => {
                 await page.emulateMedia({ reducedMotion: 'no-preference' });
 
-                const counts = await page.evaluate((duration) => {
+                await page.evaluate((duration) => {
                     const draw = Chart.prototype.draw;
-                    let count = 0;
+
+                    window.drawCount = 0;
 
                     Chart.prototype.draw = function() {
-                        count++;
+                        window.drawCount++;
 
                         return draw.call(this);
                     };
 
                     window.createChart({ animation: { duration } });
-                    const construction = count;
-
-                    count = 0;
-                    window.chart.setData({ labels: ['New'], datasets: [{ data: [30] }] });
-                    const data = count;
-
-                    count = 0;
-                    document.getElementById('chart').style.width = '500px';
-                    window.chart.setSettings({ title: { text: 'Updated' } });
-                    const settings = count;
-
-                    return { construction, data, settings };
                 }, duration);
 
-                expect(counts.construction).toBe(1);
-                expect(counts.data).toBe(1);
-                expect(counts.settings).toBe(1);
+                expect(await page.evaluate(() => window.drawCount)).toBe(1);
+
+                await page.evaluate(() => {
+                    window.drawCount = 0;
+                    window.chart.setData({ labels: ['New'], datasets: [{ data: [30] }] });
+                });
+
+                expect(await page.evaluate(() => window.drawCount)).toBe(1);
+
+                await page.evaluate(() => {
+                    window.drawCount = 0;
+                    document.getElementById('chart').style.width = '500px';
+                    window.chart.setSettings({ title: { text: 'Updated' } });
+                });
+
+                expect(await page.evaluate(() => window.drawCount)).toBe(1);
             });
         }
 

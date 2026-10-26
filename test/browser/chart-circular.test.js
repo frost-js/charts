@@ -1,12 +1,13 @@
 import { expect, test } from '#test';
 import { setupChart } from '../setup/chart.js';
+import { getPixel } from '../support/canvas.js';
 
 test.describe('Circular charts', () => {
     test.beforeEach(setupChart);
 
     test.describe('pie', () => {
         test('pie preserves combined datasets and individual slice colors', async ({ page }) => {
-            const result = await page.evaluate(() => {
+            await page.evaluate(() => {
                 window.createChart({
                     type: 'pie',
                     data: {
@@ -27,14 +28,14 @@ test.describe('Circular charts', () => {
                         ],
                     },
                 });
-
-                const context = document.querySelector('canvas').getContext('2d');
-                const points = [[400, 300], [200, 300], [200, 100], [400, 100]];
-
-                return points.map(([x, y]) => [...context.getImageData(x, y, 1, 1).data]);
             });
 
-            expect(result).toEqual([[255, 0, 0, 255], [0, 0, 255, 255], [0, 255, 0, 255], [255, 255, 0, 255]]);
+            const canvas = page.locator('canvas');
+
+            expect(await getPixel(canvas, 400, 300)).toEqual([255, 0, 0, 255]);
+            expect(await getPixel(canvas, 200, 300)).toEqual([0, 0, 255, 255]);
+            expect(await getPixel(canvas, 200, 100)).toEqual([0, 255, 0, 255]);
+            expect(await getPixel(canvas, 400, 100)).toEqual([255, 255, 0, 255]);
 
             const rect = await page.locator('canvas').boundingBox();
 
@@ -88,7 +89,14 @@ test.describe('Circular charts', () => {
             }));
 
             expect(await page.evaluate(() => window.chart.getValues())).toEqual([]);
-            expect(await page.evaluate(() => window.chart.getScale().every(Number.isFinite))).toBe(true);
+
+            const scale = await page.evaluate(() => window.chart.getScale());
+
+            expect(scale.length).toBeGreaterThanOrEqual(2);
+
+            for (const [index, tick] of scale.entries()) {
+                expect(Number.isFinite(tick), `Tick ${index}`).toBe(true);
+            }
         });
 
         test('updates empty data to zero values', async ({ page }) => {
@@ -99,7 +107,14 @@ test.describe('Circular charts', () => {
 
             expect(await page.evaluate(() => window.chart.getLabels())).toEqual(['Only']);
             expect(await page.evaluate(() => window.chart.getValues())).toEqual([0]);
-            expect(await page.evaluate(() => window.chart.getScale().every(Number.isFinite))).toBe(true);
+
+            const scale = await page.evaluate(() => window.chart.getScale());
+
+            expect(scale.length).toBeGreaterThanOrEqual(2);
+
+            for (const [index, tick] of scale.entries()) {
+                expect(Number.isFinite(tick), `Tick ${index}`).toBe(true);
+            }
         });
 
         for (const { name, value, message } of [

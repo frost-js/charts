@@ -7,22 +7,18 @@ test.describe('Chart rendering', () => {
     test.describe('data geometry', () => {
         for (const type of ['bar', 'line', 'pie']) {
             test(`${type} renders visible data and supports pointer tooltips`, async ({ page }) => {
-                const result = await page.evaluate((type) => {
-                    window.createChart({ type });
+                await page.evaluate((type) => window.createChart({ type }), type);
 
-                    const canvas = document.querySelector('canvas');
-                    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+                const canvas = page.locator('canvas');
+                const painted = await canvas.evaluate((node) => {
+                    const pixels = node.getContext('2d').getImageData(0, 0, node.width, node.height).data;
 
-                    return {
-                        painted: pixels.some((value) => value !== 0),
-                        labels: window.chart.getLabels(),
-                        values: window.chart.getValues(),
-                    };
-                }, type);
+                    return pixels.some((value) => value !== 0);
+                });
 
-                expect(result.painted).toBe(true);
-                expect(result.labels).toEqual(['A', 'B']);
-                expect(result.values).toEqual([10, 20]);
+                expect(painted).toBe(true);
+                expect(await page.evaluate(() => window.chart.getLabels())).toEqual(['A', 'B']);
+                expect(await page.evaluate(() => window.chart.getValues())).toEqual([10, 20]);
 
                 const positions = {
                     bar: [160, 300],
@@ -87,45 +83,117 @@ test.describe('Chart rendering', () => {
     test.describe('title and legend layout', () => {
         for (const position of ['top', 'right', 'bottom', 'left']) {
             test(`lays out title and legend at ${position} with formatters`, async ({ page }) => {
-                const result = await page.evaluate((position) => {
-                    const labels = [];
+                await page.evaluate((position) => {
+                    const draw = Chart.Layer.prototype.draw;
 
-                    window.createChart({
-                        title: {
-                            display: true,
-                            text: 'A long title that wraps in narrow containers',
-                            position,
-                        },
-                        legend: {
-                            display: true,
-                            position,
-                        },
-                        scales: {
-                            x: {
-                                ticks: {
-                                    callback: (value) => {
-                                        labels.push(value);
+                    window.xTicks = [];
+                    window.yTicks = [];
 
-                                        return `Label ${value}`;
+                    // Keep references to the layers that are composited onto the visible canvas.
+                    Chart.Layer.prototype.draw = function(context) {
+                        if (this instanceof Chart.Title) {
+                            window.titleLayer = this;
+                        } else if (this instanceof Chart.Legend) {
+                            window.legendLayer = this;
+                        } else if (this instanceof Chart.Bar) {
+                            window.plotLayer = this;
+                        }
+
+                        draw.call(this, context);
+                    };
+
+                    try {
+                        window.createChart({
+                            responsive: false,
+                            title: {
+                                display: true,
+                                text: 'A long title that wraps in narrow containers',
+                                position,
+                            },
+                            legend: {
+                                display: true,
+                                position,
+                            },
+                            scales: {
+                                x: {
+                                    ticks: {
+                                        callback: (value) => {
+                                            window.xTicks.push(value);
+
+                                            return `Label ${value}`;
+                                        },
+                                    },
+                                },
+                                y: {
+                                    ticks: {
+                                        callback: (value) => {
+                                            window.yTicks.push(value);
+
+                                            return `$${value}`;
+                                        },
                                     },
                                 },
                             },
-                            y: {
-                                ticks: {
-                                    callback: (value) => `$${value}`,
-                                },
-                            },
-                        },
-                    });
-
-                    const node = document.getElementById('chart');
-                    node.style.width = '80px';
-                    node.style.height = '60px';
-                    window.chart.resize();
-                    return { labels, width: node.querySelector('canvas').width };
+                        });
+                    } finally {
+                        Chart.Layer.prototype.draw = draw;
+                    }
                 }, position);
-                expect(result.labels).toContain('A');
-                expect(result.width).toBe(80);
+
+                expect(await page.evaluate(() => window.titleLayer.canvasRect.width)).toBeGreaterThan(0);
+                expect(await page.evaluate(() => window.titleLayer.canvasRect.height)).toBeGreaterThan(0);
+                expect(await page.evaluate(() => window.legendLayer.canvasRect.width)).toBeGreaterThan(0);
+                expect(await page.evaluate(() => window.legendLayer.canvasRect.height)).toBeGreaterThan(0);
+
+                for (const [width, height] of [[600, 400], [80, 60]]) {
+                    await page.evaluate(([width, height]) => {
+                        const node = document.getElementById('chart');
+
+                        node.style.width = `${width}px`;
+                        node.style.height = `${height}px`;
+                        window.chart.resize();
+                    }, [width, height]);
+
+                    await expect(page.locator('canvas')).toHaveAttribute('width', String(width));
+                    await expect(page.locator('canvas')).toHaveAttribute('height', String(height));
+
+                    if (position === 'top') {
+                        expect(await page.evaluate(() => window.titleLayer.canvasRect.top)).toBe(20);
+                        expect(await page.evaluate(() => window.legendLayer.canvasRect.top)).toBeGreaterThanOrEqual(
+                            await page.evaluate(() => window.titleLayer.canvasRect.bottom),
+                        );
+                        expect(await page.evaluate(() => window.plotLayer.rect.top)).toBeGreaterThanOrEqual(
+                            await page.evaluate(() => window.legendLayer.canvasRect.bottom),
+                        );
+                    } else if (position === 'bottom') {
+                        expect(await page.evaluate(() => window.titleLayer.canvasRect.bottom)).toBeCloseTo(height - 20);
+                        expect(await page.evaluate(() => window.legendLayer.canvasRect.bottom)).toBeLessThanOrEqual(
+                            await page.evaluate(() => window.titleLayer.canvasRect.top),
+                        );
+                        expect(await page.evaluate(() => window.plotLayer.rect.bottom)).toBeLessThanOrEqual(
+                            await page.evaluate(() => window.legendLayer.canvasRect.top),
+                        );
+                    } else if (position === 'left') {
+                        expect(await page.evaluate(() => window.titleLayer.canvasRect.left)).toBe(20);
+                        expect(await page.evaluate(() => window.legendLayer.canvasRect.left)).toBeGreaterThanOrEqual(
+                            await page.evaluate(() => window.titleLayer.canvasRect.right),
+                        );
+                        expect(await page.evaluate(() => window.plotLayer.rect.left)).toBeGreaterThanOrEqual(
+                            await page.evaluate(() => window.legendLayer.canvasRect.right),
+                        );
+                    } else {
+                        expect(await page.evaluate(() => window.titleLayer.canvasRect.right)).toBeCloseTo(width - 20);
+                        expect(await page.evaluate(() => window.legendLayer.canvasRect.right)).toBeLessThanOrEqual(
+                            await page.evaluate(() => window.titleLayer.canvasRect.left),
+                        );
+                        expect(await page.evaluate(() => window.plotLayer.rect.right)).toBeLessThanOrEqual(
+                            await page.evaluate(() => window.legendLayer.canvasRect.left),
+                        );
+                    }
+                }
+
+                expect(await page.evaluate(() => window.xTicks)).toContain('A');
+                expect(await page.evaluate(() => window.yTicks)).toContain(0);
             });
         }
 
@@ -184,27 +252,26 @@ test.describe('Chart rendering', () => {
 
     test.describe('default palette', () => {
         test('the default palette supplies twelve colors before repeating', async ({ page }) => {
-            const colors = await page.evaluate(() => {
+            await page.evaluate(() => {
                 window.createChart({
                     data: {
                         labels: ['A'],
                         datasets: Array.from({ length: 13 }, () => ({ data: [1] })),
                     },
                 });
-
-                const series = window.chart.getData().map((dataset) => dataset.backgroundColor[0]);
-
-                window.chart.setSettings({
-                    type: 'donut',
-                    data: { labels: ['A'], datasets: [{ data: [1] }] },
-                });
-
-                return { series, slices: window.chart.getData()[0].backgroundColor };
             });
 
-            expect(new Set(colors.series.slice(0, 12)).size).toBe(12);
-            expect(colors.series[12]).toBe(colors.series[0]);
-            expect(colors.slices).toEqual(colors.series.slice(0, 12));
+            const series = await page.evaluate(() => window.chart.getData().map((dataset) => dataset.backgroundColor[0]));
+
+            expect(new Set(series.slice(0, 12)).size).toBe(12);
+            expect(series[12]).toBe(series[0]);
+
+            await page.evaluate(() => window.chart.setSettings({
+                type: 'donut',
+                data: { labels: ['A'], datasets: [{ data: [1] }] },
+            }));
+
+            expect(await page.evaluate(() => window.chart.getData()[0].backgroundColor)).toEqual(series.slice(0, 12));
         });
     });
 });
