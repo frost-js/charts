@@ -46,7 +46,10 @@ export default class Tooltip extends Layer {
         const text = `${this.active.label}\n${this.active.datasetLabel}: ${formatValue(this.active.value)}`;
         const lines = wrapLines(this.context, text, maxWidth);
         const lineHeight = font.size * font.lineHeight;
-        const textWidth = Math.max(0, ...lines.map((line) => measureText(this.context, line).width));
+        const textWidth = lines.reduce((maximum, line) => {
+            return Math.max(maximum, measureText(this.context, line).width);
+        }, 0);
+
         const width = Math.min(this.canvasRect.width, textWidth + padding * 2);
         const height = Math.min(this.canvasRect.height, lines.length * lineHeight + padding * 2);
 

@@ -49,10 +49,11 @@ export default class LabelsX extends Layer {
 
         this.#metrics = this.#labels.map((label) => measureText(this.context, label));
 
-        const heights = this.#metrics.map((metric) => {
-            return metric.fontBoundingBoxAscent + metric.fontBoundingBoxDescent;
-        });
-        const maxHeight = Math.max(0, ...heights);
+        const maxHeight = this.#metrics.reduce((maximum, metric) => {
+            const height = metric.fontBoundingBoxAscent + metric.fontBoundingBoxDescent;
+
+            return Math.max(maximum, height);
+        }, 0);
 
         this.rect.height = Math.min(chartRect.height / 2, maxHeight + this.settings.padding);
         this.rect.y = chartRect.bottom - this.rect.height;

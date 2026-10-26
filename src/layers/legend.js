@@ -201,7 +201,7 @@ export default class Legend extends Layer {
 
         const rowHeight = rows.reduce((total, row) => total + row.height, 0);
         const rowSpacing = this.settings.labels.padding * Math.max(0, rows.length - 1);
-        const rectWidth = Math.max(0, ...rows.map((row) => row.width));
+        const rectWidth = rows.reduce((maximum, row) => Math.max(maximum, row.width), 0);
         const rectHeight = rowHeight + rowSpacing;
 
         const padding = rows.length ? Math.min(this.settings.labels.padding, chartRect.height - rectHeight) : 0;
@@ -302,7 +302,7 @@ export default class Legend extends Layer {
         const columnWidth = cols.reduce((total, col) => total + col.width, 0);
         const columnSpacing = this.settings.labels.padding * Math.max(0, cols.length - 1);
         const rectWidth = columnWidth + columnSpacing;
-        const rectHeight = Math.max(0, ...cols.map((col) => col.height));
+        const rectHeight = cols.reduce((maximum, col) => Math.max(maximum, col.height), 0);
 
         const padding = cols.length ? Math.min(this.settings.labels.padding, chartRect.width - rectWidth) : 0;
 
@@ -346,7 +346,7 @@ export default class Legend extends Layer {
         return datasets.map((dataset) => {
             const lines = wrapLines(this.context, dataset.label, availableWidth);
             const metrics = lines.map((line) => measureText(this.context, line));
-            const textWidth = Math.max(0, ...metrics.map((metric) => metric.width));
+            const textWidth = metrics.reduce((maximum, metric) => Math.max(maximum, metric.width), 0);
             const textHeight = lines.length * this.#lineHeight;
 
             return {

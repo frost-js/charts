@@ -1479,10 +1479,10 @@
 				return String(formatted);
 			});
 			this.#metrics = this.#labels.map((label) => measureText(this.context, label));
-			const heights = this.#metrics.map((metric) => {
-				return metric.fontBoundingBoxAscent + metric.fontBoundingBoxDescent;
-			});
-			const maxHeight = Math.max(0, ...heights);
+			const maxHeight = this.#metrics.reduce((maximum, metric) => {
+				const height = metric.fontBoundingBoxAscent + metric.fontBoundingBoxDescent;
+				return Math.max(maximum, height);
+			}, 0);
 			this.rect.height = Math.min(chartRect.height / 2, maxHeight + this.settings.padding);
 			this.rect.y = chartRect.bottom - this.rect.height;
 			chartRect.height -= this.rect.height;
@@ -1562,7 +1562,7 @@
 				return String(formatted);
 			});
 			this.#metrics = this.#labels.map((label) => measureText(this.context, label));
-			const maxWidth = Math.max(0, ...this.#metrics.map((metric) => metric.width));
+			const maxWidth = this.#metrics.reduce((maximum, metric) => Math.max(maximum, metric.width), 0);
 			this.rect.width = Math.min(chartRect.width / 2, maxWidth + this.settings.padding);
 			chartRect.width -= this.rect.width;
 			chartRect.x = this.rect.right;
@@ -1746,7 +1746,7 @@
 			if (row && row.width && row.height) addRow(row);
 			const rowHeight = rows.reduce((total, row) => total + row.height, 0);
 			const rowSpacing = this.settings.labels.padding * Math.max(0, rows.length - 1);
-			const rectWidth = Math.max(0, ...rows.map((row) => row.width));
+			const rectWidth = rows.reduce((maximum, row) => Math.max(maximum, row.width), 0);
 			const rectHeight = rowHeight + rowSpacing;
 			const padding = rows.length ? Math.min(this.settings.labels.padding, chartRect.height - rectHeight) : 0;
 			this.#rows = rows;
@@ -1810,7 +1810,7 @@
 			}
 			if (col && col.width && col.height) addCol(col);
 			const rectWidth = cols.reduce((total, col) => total + col.width, 0) + this.settings.labels.padding * Math.max(0, cols.length - 1);
-			const rectHeight = Math.max(0, ...cols.map((col) => col.height));
+			const rectHeight = cols.reduce((maximum, col) => Math.max(maximum, col.height), 0);
 			const padding = cols.length ? Math.min(this.settings.labels.padding, chartRect.width - rectWidth) : 0;
 			this.#cols = cols;
 			switch (this.settings.align) {
@@ -1842,7 +1842,7 @@
 			return datasets.map((dataset) => {
 				const lines = wrapLines(this.context, dataset.label, availableWidth);
 				const metrics = lines.map((line) => measureText(this.context, line));
-				const textWidth = Math.max(0, ...metrics.map((metric) => metric.width));
+				const textWidth = metrics.reduce((maximum, metric) => Math.max(maximum, metric.width), 0);
 				const textHeight = lines.length * this.#lineHeight;
 				return {
 					dataset,
@@ -1978,8 +1978,10 @@
 			if (this.settings.display && this.settings.labels.display) {
 				const { font, padding } = this.settings.labels;
 				updateFont(this.context, font);
-				const widths = this.#labels.map((label) => measureText(this.context, label).width);
-				paddingX = Math.min(chartRect.width / 4, Math.max(0, ...widths) + padding);
+				const maxWidth = this.#labels.reduce((maximum, label) => {
+					return Math.max(maximum, measureText(this.context, label).width);
+				}, 0);
+				paddingX = Math.min(chartRect.width / 4, maxWidth + padding);
 				paddingY = Math.min(chartRect.height / 4, font.size * font.lineHeight + padding);
 			}
 			const size = Math.max(0, Math.min(chartRect.width - paddingX * 2, chartRect.height - paddingY * 2));
@@ -2239,7 +2241,9 @@
 			const text = `${this.active.label}\n${this.active.datasetLabel}: ${formatValue(this.active.value)}`;
 			const lines = wrapLines(this.context, text, maxWidth);
 			const lineHeight = font.size * font.lineHeight;
-			const textWidth = Math.max(0, ...lines.map((line) => measureText(this.context, line).width));
+			const textWidth = lines.reduce((maximum, line) => {
+				return Math.max(maximum, measureText(this.context, line).width);
+			}, 0);
 			const width = Math.min(this.canvasRect.width, textWidth + padding * 2);
 			const height = Math.min(this.canvasRect.height, lines.length * lineHeight + padding * 2);
 			const fixed = this.settings.position === "fixed";

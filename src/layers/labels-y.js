@@ -47,7 +47,7 @@ export default class LabelsY extends Layer {
         });
         this.#metrics = this.#labels.map((label) => measureText(this.context, label));
 
-        const maxWidth = Math.max(0, ...this.#metrics.map((metric) => metric.width));
+        const maxWidth = this.#metrics.reduce((maximum, metric) => Math.max(maximum, metric.width), 0);
 
         this.rect.width = Math.min(chartRect.width / 2, maxWidth + this.settings.padding);
 

@@ -20,6 +20,39 @@ test.describe('Chart updates', () => {
             expect(await page.evaluate(() => window.chart.getScaleMax())).toBe(0);
         });
 
+        for (const { name, type, orientation } of [
+            { name: 'x', type: 'bar', orientation: 'vertical' },
+            { name: 'y', type: 'bar', orientation: 'horizontal' },
+            { name: 'radial', type: 'radar', orientation: 'vertical' },
+        ]) {
+            test(`updates large datasets with ${name} category labels`, async ({ page }) => {
+                await page.evaluate(({ type, orientation }) => window.makeChart({
+                    type,
+                    orientation,
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { grid: { display: false } },
+                        r: { grid: { display: false } },
+                    },
+                }), { type, orientation });
+
+                const canvas = page.locator('canvas');
+                const previous = await canvas.evaluate((node) => node.toDataURL());
+
+                await page.evaluate(() => {
+                    // Exceeds Chromium's function argument limit during label measurement.
+                    window.chart.setData({
+                        labels: Array(150000).fill('Category'),
+                        datasets: [{ data: Array(150000).fill(1), borderWidth: 0, pointRadius: 0 }],
+                    });
+                });
+
+                expect(await page.evaluate(() => window.chart.getLabels().length)).toBe(150000);
+                expect(await page.evaluate(() => window.chart.options.data.datasets[0].data.length)).toBe(150000);
+                expect(await canvas.evaluate((node) => node.toDataURL())).not.toBe(previous);
+            });
+        }
+
         test('copies input data instead of retaining caller-owned arrays', async ({ page }) => {
             await page.evaluate(() => {
                 const data = { labels: ['New'], datasets: [{ data: [-500], backgroundColor: ['red'] }] };

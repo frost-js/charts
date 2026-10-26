@@ -46,9 +46,11 @@ export default class RadialGrid extends Layer {
 
             updateFont(this.context, font);
 
-            const widths = this.#labels.map((label) => measureText(this.context, label).width);
+            const maxWidth = this.#labels.reduce((maximum, label) => {
+                return Math.max(maximum, measureText(this.context, label).width);
+            }, 0);
 
-            paddingX = Math.min(chartRect.width / 4, Math.max(0, ...widths) + padding);
+            paddingX = Math.min(chartRect.width / 4, maxWidth + padding);
             paddingY = Math.min(chartRect.height / 4, font.size * font.lineHeight + padding);
         }
 
