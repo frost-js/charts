@@ -7,15 +7,67 @@
 [![JS gzip size](https://img.badgesize.io/frost-js/charts/main/dist/frost-charts.min.js?compression=gzip&label=JS%20gzip%20size&style=flat-square)](https://github.com/frost-js/charts/blob/main/dist/frost-charts.min.js)
 [![license](https://img.shields.io/github/license/frost-js/charts?style=flat-square)](./LICENSE)
 
-Standalone canvas bar, line, area, pie, donut, scatter, polar area, and radar charts with no runtime dependencies. Charts support horizontal and stacked bars, titles, interactive legends, configurable axes, animated updates, pointer tooltips, responsive sizing, and high-DPI rendering.
+Standalone responsive canvas bar, line, area, pie, donut, scatter, polar area, and radar charts.
+
+## Highlights
+
+- Grouped, horizontal, and stacked bars with positive and negative values
+- Line and area series, numeric scatter plots, pie and donut slices, and radial charts
+- Wrapped titles, configurable axes, and formatted tick labels
+- Interactive legends with dataset and slice visibility controls
+- Tooltips anchored to data points or following the pointer
+- Animated updates with configurable duration, easing, and reduced-motion support
+- Responsive sizing and high-DPI rendering
+- Accessible chart descriptions and keyboard legend controls
+- Existing-instance reuse with frozen resolved options
+- Prebuilt ESM and UMD bundles with source maps
+- No runtime dependencies or required stylesheets
+- JSDoc-powered IntelliSense
+
+Explore [the demo](./demo/index.html) for interactive examples.
 
 ## Installation
 
-```sh
-npm install @fr0st/charts
+### Browser projects / bundlers
+
+```bash
+npm i @fr0st/charts
 ```
 
-The build tooling requires Node.js `^20.19.0 || ^22.13.0 || >=24`. The library targets browsers supported by the sibling Frost UI packages.
+Frost Charts' package entry point is ESM-only and requires a browser DOM with Canvas 2D support. Import the default `Chart` export in browser projects and bundlers:
+
+```js
+import Chart from '@fr0st/charts';
+```
+
+A named `Chart` export is also available. Frost Charts has no runtime dependencies and does not require a stylesheet.
+
+### Browser (ESM)
+
+Import the minified ESM bundle directly from a CDN:
+
+```html
+<script type="module">
+    import Chart from 'https://cdn.jsdelivr.net/npm/@fr0st/charts@latest/dist/frost-charts.esm.min.js';
+</script>
+```
+
+### Browser (UMD)
+
+Load the bundle from your own copy or a CDN:
+
+```html
+<script src="/path/to/dist/frost-charts.min.js"></script>
+<!-- or -->
+<script src="https://cdn.jsdelivr.net/npm/@fr0st/charts@latest/dist/frost-charts.min.js"></script>
+<script>
+    const { Chart } = globalThis;
+</script>
+```
+
+The UMD bundle exposes `globalThis.Chart`.
+
+The package root resolves to the prebuilt ESM bundle. Published files under `dist/` and `src/` are also available through matching package subpaths.
 
 ## Usage
 
@@ -28,7 +80,7 @@ Give the container a height; containers without an intrinsic height use 300 pixe
 ```js
 import Chart from '@fr0st/charts';
 
-const chart = new Chart(document.getElementById('chart'), {
+const chart = Chart.init(document.querySelector('#chart'), {
     type: 'bar',
     title: {
         text: 'Quarterly sales',
@@ -46,76 +98,48 @@ const chart = new Chart(document.getElementById('chart'), {
 });
 ```
 
-A named `Chart` export is also available. The UMD bundles expose `window.Chart` and work without a module loader, Frost UI, or a stylesheet:
-
-```html
-<script src="node_modules/@fr0st/charts/dist/frost-charts.js"></script>
-<script>
-    const chart = new Chart(document.getElementById('chart'), {
-        data: {
-            labels: ['A', 'B'],
-            datasets: [{ label: 'Values', data: [10, 20] }],
-        },
-    });
-</script>
-```
-
-## Data
-
-Bar, line, area, pie, donut, polar area, and radar datasets must have one finite numeric value per label. Bar, line, and area charts accept negative values. Pie, donut, polar area, and radar charts reject negative values. Pie, donut, and polar area datasets contribute slices to one combined circle. Empty datasets and zero-valued circular charts render without errors.
-
-Scatter datasets accept finite `{ x, y }` points. Labels are optional, datasets may have different lengths, and both axes use numeric scales. Points are drawn without connecting lines.
-
-| Dataset option | Description |
-| --- | --- |
-| `label` | Legend and tooltip label; defaults to `Dataset 1`, `Dataset 2`, and so on. |
-| `data` | Numeric values corresponding to `data.labels`. |
-| `backgroundColor` | One CSS color or a repeating array of colors. |
-| `borderColor` | One CSS color or a repeating array of colors. |
-| `borderWidth` | Nonnegative border width; defaults to `1`. Set `0` to omit borders. |
-| `pointRadius` | Line/area/radar point radius; defaults to `2`, or `4` for scatter. |
-| `fillOpacity` | Fill opacity from `0` to `1`: `.2` for area/radar polygons and `.75` for polar sectors. Area/radar fills use the first background color in the dataset. |
-
-The default palette starts with indigo, teal, amber, and pink and contains twelve colors. Cartesian and radar series receive one color per dataset; pie, donut, and polar area slices cycle through the palette. Explicit dataset colors override the defaults. Grid lines use a soft gray, axis borders a slightly darker gray, and ticks inherit their grid color unless `tickColor` is supplied.
-
-Inputs and data getter results are copied. Changing the original data object does not change a chart; call `setData` to apply an update. `chart.options` is a snapshot reused until data or settings change. Its copied arrays and plain objects are frozen; callbacks, dates, and class instances retain their original references and are not frozen. Invalid data and unsupported chart types are rejected before replacing the current state.
-
-Numeric strings are accepted for values, coordinates, and numeric settings. Invalid numeric settings fall back to defaults; negative dimensions clamp to zero, and fill opacity clamps to the range 0–1. Invalid font sizes and donut cutouts use their defaults.
-
 ## Options
 
-The original option groups remain available. Area and scatter reuse the line renderer; donut reuses the pie renderer. See `Chart.defaults` in [src/chart.js](src/chart.js) for the complete defaults.
+Options are resolved in this order:
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `type` | `'bar'` | `'bar'`, `'line'`, `'area'`, `'pie'`, `'donut'`, `'scatter'`, `'polarArea'`, or `'radar'`. |
-| `orientation` | `'vertical'` | Bar direction: `'vertical'` or `'horizontal'`. |
-| `stacked` | `false` | Stack bar datasets; positive and negative values accumulate separately. |
-| `cutout` | `.6` | Donut inner radius as a fraction of the outer radius, from `0` up to but excluding `1`. |
-| `title.display` | `true` | Displays the chart title. |
-| `title.text` | `'Title'` | Title text, wrapped to the available space. |
-| `title.position` | `'top'` | `'top'`, `'right'`, `'bottom'`, or `'left'`. |
-| `title.align` | `'center'` | Alignment along the title edge. |
-| `legend.display` | `true` | Displays dataset keys, or slice keys for pie, donut, and polar area charts. |
-| `legend.interactive` | `true` | Click keys to hide/show datasets, or individual circular slices. Native buttons provide keyboard access. |
-| `legend.labels.textAlign` | `'start'` | Aligns entries within rows or columns; side legends share a left edge by default. |
-| `legend.position` | `'top'` | The edge containing the legend. |
-| `legend.align` | `'center'` | `'start'`, `'center'`, or `'end'`. |
-| `legend.maxWidth`, `legend.maxHeight` | `null` | Optional limits in CSS pixels. Items that cannot fit are omitted. |
-| `font` | 12px Helvetica/Arial | Base font inherited by titles, legends, ticks, and tooltips. |
-| `scales.x`, `scales.y` | Visible | Each axis has `display`, `grid`, and `ticks` settings. Used by Cartesian charts. Horizontal bars use numeric x ticks and category y labels. |
-| `scales.r` | Visible | Radial `grid`, numeric `ticks`, and category `labels` for radar and polar area charts. |
-| `layout.padding` | `20` | Outer padding in CSS pixels. |
-| `animation.duration` | `300` | Animation duration for all chart types in milliseconds. Set `0` to disable; reduced-motion preferences disable it automatically. |
-| `animation.easing` | `'easeOutQuad'` | `'linear'`, `'easeOutQuad'`, or `'easeInOutQuad'`. |
-| `tooltip.position` | `'fixed'` | Anchor beside the hovered mark, or use `'cursor'` to follow the pointer. Placement flips near edges and stays stable while moving within a mark. |
-| `tooltip.display` | `true` | Shows a canvas tooltip for the hovered mark. |
-| `tooltip.padding` | `10` | Tooltip padding in CSS pixels. |
-| `tooltip.borderRadius` | `6` | Tooltip corner radius in CSS pixels. |
-| `tooltip.arrowSize` | `5` | Tooltip pointer size; set `0` to omit it. |
-| `tooltip.backgroundColor` | `'rgba(24, 28, 36, .92)'` | Slightly translucent background; text remains opaque. |
-| `responsive` | `true` | Observes container resizing. |
-| `ariaLabel` | `'Chart'` | Prefix for the accessible description containing labels and values. |
+1. Chart defaults
+2. Options passed to `Chart.init()` or the constructor
+
+Resolved `instance.options` contain copied arrays and plain objects, which are recursively frozen. Callbacks, dates, and class instances retain their original references and are not frozen. Use `setSettings()` to merge changed options into an existing chart.
+
+`Chart.defaults` may be customized before creating instances. See [src/chart.js](./src/chart.js) for the complete defaults.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `animation.duration` | `number` | `300` | Animation duration for all chart types in milliseconds. Set `0` to disable; reduced-motion preferences disable it automatically. |
+| `animation.easing` | `'linear' \| 'easeOutQuad' \| 'easeInOutQuad'` | `'easeOutQuad'` | Timing curve used during animation. |
+| `ariaLabel` | `string` | `'Chart'` | Prefix for the accessible description containing labels and values. |
+| `cutout` | `number` | `0.6` | Donut inner radius as a fraction of the outer radius, from `0` up to but excluding `1`. |
+| `data` | `object` | `{ labels: [], datasets: [] }` | Category labels and datasets; see [Data](#data). |
+| `font` | `object` | 12px Helvetica/Arial | Base font inherited by titles, legends, ticks, and tooltips. |
+| `layout.padding` | `number` | `20` | Outer padding in CSS pixels. |
+| `legend.align` | `'start' \| 'center' \| 'end' \| 'left' \| 'right'` | `'center'` | Alignment along the legend edge. |
+| `legend.display` | `boolean` | `true` | Displays dataset keys, or slice keys for pie, donut, and polar area charts. |
+| `legend.interactive` | `boolean` | `true` | Click keys to hide/show datasets, or individual circular slices. Native buttons provide keyboard access. |
+| `legend.labels.textAlign` | `'start' \| 'center' \| 'end' \| 'left' \| 'right'` | `'start'` | Aligns entries within rows or columns; side legends share a left edge by default. |
+| `legend.maxWidth`, `legend.maxHeight` | `number \| null` | `null` | Optional limits in CSS pixels. Items that cannot fit are omitted. |
+| `legend.position` | `'top' \| 'right' \| 'bottom' \| 'left'` | `'top'` | The edge containing the legend. |
+| `orientation` | `'vertical' \| 'horizontal'` | `'vertical'` | Bar direction. |
+| `responsive` | `boolean` | `true` | Observes container resizing. |
+| `scales.r` | `object` | Visible | Radial `grid`, numeric `ticks`, and category `labels` for radar and polar area charts. |
+| `scales.x`, `scales.y` | `object` | Visible | Each axis has `display`, `grid`, and `ticks` settings. Used by Cartesian charts. Horizontal bars use numeric x ticks and category y labels. |
+| `stacked` | `boolean` | `false` | Stack bar datasets; positive and negative values accumulate separately. |
+| `title.align` | `'start' \| 'center' \| 'end' \| 'left' \| 'right'` | `'center'` | Alignment along the title edge. |
+| `title.display` | `boolean` | `true` | Displays the chart title. |
+| `title.position` | `'top' \| 'right' \| 'bottom' \| 'left'` | `'top'` | The edge containing the title. |
+| `title.text` | `string` | `'Title'` | Title text, wrapped to the available space. |
+| `tooltip.arrowSize` | `number` | `5` | Tooltip pointer size; set `0` to omit it. |
+| `tooltip.backgroundColor` | `string` | `'rgba(24, 28, 36, .92)'` | Slightly translucent background; text remains opaque. |
+| `tooltip.borderRadius` | `number` | `6` | Tooltip corner radius in CSS pixels. |
+| `tooltip.display` | `boolean` | `true` | Shows a canvas tooltip for the hovered mark. |
+| `tooltip.padding` | `number` | `10` | Tooltip padding in CSS pixels. |
+| `tooltip.position` | `'fixed' \| 'cursor'` | `'fixed'` | Anchor beside the hovered mark, or use `'cursor'` to follow the pointer. Placement flips near edges and stays stable while moving within a mark. |
+| `type` | `'bar' \| 'line' \| 'area' \| 'pie' \| 'donut' \| 'scatter' \| 'polarArea' \| 'radar'` | `'bar'` | The chart type. |
 
 Bars and Cartesian points animate from the zero baseline on first render. Pie and donut slices sweep into view; radar and polar area marks grow from the center. Data updates interpolate to the new geometry, and interrupted transitions continue from their visible positions. Set `animation.duration` to `0` to render immediately.
 
@@ -133,7 +157,29 @@ chart.setSettings({
 });
 ```
 
-## Chart variants
+### Data
+
+Bar, line, area, pie, donut, polar area, and radar datasets must have one finite numeric value per label. Bar, line, and area charts accept negative values. Pie, donut, polar area, and radar charts reject negative values. Pie, donut, and polar area datasets contribute slices to one combined circle. Empty datasets and zero-valued circular charts render without errors.
+
+Scatter datasets accept finite `{ x, y }` points. Labels are optional, datasets may have different lengths, and both axes use numeric scales. Points are drawn without connecting lines.
+
+| Dataset option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `backgroundColor` | `string \| string[]` | Default palette | One CSS fill color or a repeating array of colors. |
+| `borderColor` | `string \| string[]` | Default palette or white | One CSS border color or a repeating array. Pie, donut, and polar area borders default to white. |
+| `borderWidth` | `number` | `1` | Nonnegative border width in pixels. Set `0` to omit borders. |
+| `data` | `number[] \| { x: number, y: number }[]` | Required | Values corresponding to `data.labels`, or numeric coordinates for scatter charts. |
+| `fillOpacity` | `number` | `0.2`, or `0.75` for polar area | Fill opacity between 0 and 1. Area and radar fills use the first background color in the dataset. |
+| `label` | `string` | `'Dataset N'` | Dataset name, with N starting at 1. |
+| `pointRadius` | `number` | `2`, or `4` for scatter | Nonnegative radius of line, area, scatter, and radar points in pixels. |
+
+The default palette starts with indigo, teal, amber, and pink and contains twelve colors. Cartesian and radar series receive one color per dataset; pie, donut, and polar area slices cycle through the palette. Explicit dataset colors override the defaults. Grid lines use a soft gray, axis borders a slightly darker gray, and ticks inherit their grid color unless `tickColor` is supplied.
+
+Inputs and data getter results are copied. Changing the original data object does not change a chart; call `setData` to apply an update. `chart.options` is a snapshot reused until data or settings change. Invalid data and unsupported chart types are rejected before replacing the current state.
+
+Numeric strings are accepted for values, coordinates, and numeric settings. Invalid numeric settings fall back to defaults; negative dimensions clamp to zero, and fill opacity clamps to the range 0–1. Invalid font sizes and donut cutouts use their defaults.
+
+### Chart types
 
 An area chart uses the same labeled data as a line chart:
 
@@ -180,7 +226,7 @@ chart.setSettings({ type: 'polarArea' });
 
 Both use nonnegative labeled data and `scales.r` for their guides. Its `grid` settings control radial line color and width; `ticks` control centered scale numbers and formatting; `labels` control category text and padding. Set `scales.r.display: false` to hide all radial guides and labels. Polar sectors default to `fillOpacity: .75` so the underlying scale remains visible.
 
-## Legend interaction
+### Legend interaction
 
 Click a legend key, or tab to its native button and press Space or Enter. Hidden keys are faded and struck through, and the scale is recalculated from visible data. Bar, line, area, scatter, and radar keys toggle datasets; pie, donut, and polar area keys toggle individual slices. Set `legend.interactive: false` for a display-only legend.
 
@@ -194,53 +240,78 @@ chart.setDataVisibility(0, 2, false); // Hide the third circular slice in the fi
 
 ## Methods
 
-| Method | Behavior |
-| --- | --- |
-| `setData({ labels, datasets })` | Validates and replaces data, recalculates the scale, and redraws. |
-| `setSettings(options)` | Merges settings, rebuilds the layers, and redraws. Can change chart type and data together. |
-| `getData()` | Returns the normalized datasets. |
-| `getLabels()` | Returns the category labels. |
-| `getValues(axis = 'y')` | Returns values from visible datasets and items; scatter supports `'x'` or `'y'`. |
-| `getScale(axis = 'y')`, `getScaleMin(axis = 'y')`, `getScaleMax(axis = 'y')` | Return the numeric scale or its boundaries. Use `'x'` for scatter or horizontal bars. The default returns the value scale for other chart types. |
-| `isDatasetVisible(index)`, `setDatasetVisibility(index, visible)` | Read or change dataset visibility. |
-| `isDataVisible(datasetIndex, index)`, `setDataVisibility(datasetIndex, index, visible)` | Read item visibility or toggle a circular slice. |
-| `update()` | Recalculates layout and data and starts the configured animation. |
-| `calculate()` | Recalculates layer bounds and data geometry. |
-| `render()` | Renders all layers at their final positions immediately. |
-| `draw()` | Composites the current layers. |
-| `run()` | Starts the current chart transition. |
-| `resize()` | Measures the container and redraws, including when `responsive` is disabled. |
-| `dispose()` | Cancels animation, removes observers and listeners, and removes the generated canvas and legend controls. Safe to call more than once. |
+| Method | Returns | Description |
+| --- | --- | --- |
+| `Chart.init(node, options?)` | `Chart` | Return the existing instance for an element or create one. |
+| `calculate()` | `void` | Recalculate layer bounds and data geometry. |
+| `dispose()` | `void` | Remove generated markup, animation frames, listeners, observers, and registration. |
+| `draw()` | `void` | Composite the rendered layers onto the visible canvas. |
+| `getData()` | `object[]` | Return independent copies of the normalized datasets. |
+| `getLabels()` | `string[]` | Return a copy of the category labels. |
+| `getScale(axis = 'y')` | `number[]` | Return a copy of the calculated scale ticks. |
+| `getScaleMax(axis = 'y')` | `number` | Return the upper scale boundary. |
+| `getScaleMin(axis = 'y')` | `number` | Return the lower scale boundary. |
+| `getValues(axis = 'y')` | `number[]` | Return values from visible datasets and items. |
+| `isDatasetVisible(index)` | `boolean` | Check whether a dataset is enabled. |
+| `isDataVisible(datasetIndex, index)` | `boolean` | Check whether a data item and its dataset are enabled. |
+| `render()` | `void` | Render the layers at their final positions without animation. |
+| `resize()` | `void` | Measure the container and redraw, including when `responsive` is disabled. |
+| `run()` | `void` | Start the configured chart animation. |
+| `setData(data?)` | `void` | Validate and replace data, recalculate the scale, and redraw. Omit data to reapply the current data. |
+| `setDatasetVisibility(index, visible)` | `void` | Show or hide a dataset without removing its values. |
+| `setDataVisibility(datasetIndex, index, visible)` | `void` | Show or hide an individual pie, donut, or polar area slice. |
+| `setSettings(options?)` | `void` | Merge changed settings and redraw. Chart type and data may change together. |
+| `update()` | `void` | Recalculate layout and data and start the configured animation. |
 
-`Chart.init(node, options)` returns the existing chart for a container or creates one. Calling the constructor twice on the same container throws; dispose the old chart before replacing it. Call `dispose()` before removing a container from the DOM to release its listeners and observer.
+For scale getters, use `'x'` for the horizontal scale in scatter charts or horizontal bars. The default returns the value scale for other chart types. For `getValues()`, `'x'` selects the x coordinates of scatter data.
+
+```js
+chart.setData({
+    labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+    datasets: [{ label: 'Sales', data: [15, 21, 8, 30] }],
+});
+chart.setSettings({ legend: { position: 'bottom' } });
+console.log(chart.getValues()); // [15, 21, 8, 30]
+```
+
+The `Chart` class exposes the renderers as `Chart.Bar`, `Chart.Line`, `Chart.Area`, `Chart.Scatter`, `Chart.Pie`, `Chart.Donut`, `Chart.PolarArea`, and `Chart.Radar`. Layer and geometry classes are available as `Chart.Grid`, `Chart.Layer`, `Chart.Legend`, `Chart.Rect`, `Chart.Title`, and `Chart.Tooltip`. Area and scatter share the line renderer; donut shares the pie renderer.
+
+## Lifecycle
+
+Calling `Chart.init()` again for the same element returns its existing instance. Calling the constructor twice for the same container throws. Use `setSettings()` to change options on an existing chart, or dispose it before creating another instance.
+
+An instance exposes its container as `instance.node` and its frozen resolved configuration as `instance.options`. Both become `null` after disposal.
+
+`dispose()` cancels animation frames, releases listeners and observers, removes the generated canvas and legend controls, and removes the registered instance. Original container children are preserved. Repeated disposal is safe. Call `dispose()` before removing the container from the DOM.
+
+If initialization fails, the chart releases resources it created before rethrowing the error. The container can then be initialized again.
+
+## Accessibility
+
+The canvas exposes `role="img"`, an accessible label, and fallback text containing the chart title, dataset labels, and values. Set `ariaLabel` to a meaningful description of the chart. Hidden values are marked in the description, and an active tooltip adds `aria-description`.
+
+Interactive legends provide native buttons with `aria-pressed` reflecting dataset or slice visibility. Tab to a legend button and press Space or Enter to toggle it; keyboard focus is drawn on the matching canvas legend item.
+
+Animations respect `prefers-reduced-motion` and render immediately when reduced motion is requested.
 
 ## Development
 
-```sh
-npm ci
-npx playwright install --with-deps
-npm run lint
+Install dependencies with `npm ci`, then install Playwright browsers with `npx playwright install --with-deps`.
+
+```bash
 npm test
-npm run test:coverage
-npm pack --dry-run
+npm run lint
+npm run build
 ```
 
-`npm test` builds and tests Chromium, Firefox, and WebKit. `npm run test:browser -- --project=chromium` runs one browser against existing bundles. Coverage uses Chromium and reports source coverage in `coverage/`.
+`npm test` rebuilds the bundles, then runs the Playwright suite in Chromium, Firefox, and WebKit. `npm run test:browser` runs the suite against the existing bundles, so rebuild after changing source files.
 
-Open `demo/index.html` directly in a browser, or serve the repository with your preferred static server. The demos load the Frost UI 4 stylesheet from jsDelivr for presentation and the standalone chart bundle from `dist/`; no installed dependencies are needed to view them. Frost UI JavaScript and query are not used. The sidebar links to chart types, legend placements, and tooltip examples. The examples share the default palette and chart styling; the demos do not include theme synchronization. Generated ESM and UMD bundles, minified variants, and source maps are tracked in `dist/`, matching the sibling projects.
+After building, `npm run test:coverage` runs Chromium tests and writes coverage reports to `coverage/`.
 
-Chart renderers live in `src/charts/`; shared visual layers live in `src/layers/`. The public entry point and `Chart` class aliases remain unchanged.
+`npm run test:headed` and `npm run test:ui` also use the existing bundles and open headed browsers or the Playwright UI.
 
-## Migration from the unfinished prototype
-
-Keep using `new Chart(...)` in browser scripts, and load `frost-charts.js` instead of `frost-chart.js`. FrostUI, Core, and dom are no longer required. The package entry point resolves to the ESM bundle.
-
-If using the earlier completion baseline, replace `new UI.Chart(...)` or `fQuery(...).chart()` with `new Chart(...)` or `Chart.init(...)`. Charts no longer inherit from UI.BaseComponent or use UI data attributes; supply options directly and call `dispose()` before removing the container.
-
-The additional `Chart.Area`, `Chart.Donut`, and `Chart.Scatter` aliases expose the shared variant renderers. `Chart.PolarArea` and `Chart.Radar` expose the radial renderers. The original layer responsibilities and `Chart.Bar`, `Chart.Line`, `Chart.Pie`, `Chart.Grid`, `Chart.Layer`, `Chart.Legend`, `Chart.Rect`, `Chart.Title`, and `Chart.Tooltip` class aliases remain. Internal underscore fields and methods are now private; direct access to prototype internals is unsupported.
-
-The initial prototype is preserved in commit `a0b4404`.
+To view the demo, open `demo/index.html` in your browser after building.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Frost Charts is released under the [MIT License](./LICENSE).
