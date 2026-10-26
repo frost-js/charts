@@ -11,7 +11,7 @@ test.describe('Chart interactions', () => {
                     const first = chartType === 'scatter' ? [{ x: 10, y: 20 }] : [20];
                     const second = chartType === 'scatter' ? [{ x: 5, y: 5 }] : [5];
 
-                    window.makeChart({
+                    window.createChart({
                         type: chartType,
                         legend: { display: true },
                         data: {
@@ -48,7 +48,7 @@ test.describe('Chart interactions', () => {
 
         test('removed items do not retain hidden state when data is replaced', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart();
+                window.createChart();
                 window.chart.setDatasetVisibility(0, false);
                 window.chart.setData({ labels: [], datasets: [] });
                 window.chart.setData({ labels: ['A'], datasets: [{ data: [3] }] });
@@ -61,7 +61,7 @@ test.describe('Chart interactions', () => {
 
     test.describe('legend controls', () => {
         test('canvas legend clicks toggle datasets and native controls retain keyboard focus', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({
+            await page.evaluate(() => window.createChart({
                 legend: { display: true, align: 'start' },
                 data: {
                     labels: ['A', 'B'],
@@ -98,7 +98,7 @@ test.describe('Chart interactions', () => {
 
         for (const type of ['pie', 'donut', 'polarArea']) {
             test(`${type} legend keys toggle individual slices`, async ({ page }) => {
-                await page.evaluate((chartType) => window.makeChart({
+                await page.evaluate((chartType) => window.createChart({
                     type: chartType,
                     legend: { display: true },
                 }), type);
@@ -117,7 +117,7 @@ test.describe('Chart interactions', () => {
         }
 
         test('disables legend controls when interaction is disabled', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({ legend: { display: true, interactive: false } }));
+            await page.evaluate(() => window.createChart({ legend: { display: true, interactive: false } }));
 
             await expect(page.getByRole('button')).toHaveCount(0);
         });
@@ -125,7 +125,7 @@ test.describe('Chart interactions', () => {
 
     test.describe('tooltips', () => {
         test('tooltips stay anchored by default and can follow the cursor', async ({ page }) => {
-            await page.evaluate(() => window.makeChart());
+            await page.evaluate(() => window.createChart());
 
             const canvas = page.locator('canvas');
             const bounds = await canvas.boundingBox();
@@ -184,7 +184,7 @@ test.describe('Chart interactions', () => {
                     };
                 };
 
-                window.makeChart({ tooltip: { position: 'fixed' } });
+                window.createChart({ tooltip: { position: 'fixed' } });
             });
 
             const canvas = page.locator('canvas');
@@ -212,7 +212,7 @@ test.describe('Chart interactions', () => {
 
         test('canvas tooltips treat labels as text', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart({
+                window.createChart({
                     data: {
                         labels: ['<img src=x onerror=alert(1)>'],
                         datasets: [{ data: [1] }],
@@ -229,7 +229,7 @@ test.describe('Chart interactions', () => {
         });
 
         test('removes tooltip descriptions when display is disabled', async ({ page }) => {
-            await page.evaluate(() => window.makeChart());
+            await page.evaluate(() => window.createChart());
 
             const canvas = page.locator('canvas');
             const bounds = await canvas.boundingBox();
@@ -244,7 +244,7 @@ test.describe('Chart interactions', () => {
 
         test('bar coordinates are correct after scroll and CSS scaling', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart();
+                window.createChart();
                 document.body.style.height = '2000px';
                 const node = document.getElementById('chart');
                 node.style.marginTop = '500px';

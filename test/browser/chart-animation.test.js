@@ -10,7 +10,7 @@ test.describe('Chart animation', () => {
         test('uses a 300ms duration by default', async ({ page }) => {
             await page.emulateMedia({ reducedMotion: 'no-preference' });
 
-            await page.evaluate(() => window.makeChart({ type: 'line', animation: Chart.defaults.animation }));
+            await page.evaluate(() => window.createChart({ type: 'line', animation: Chart.defaults.animation }));
 
             expect(await page.evaluate(() => window.chart.options.animation.duration)).toBe(300);
 
@@ -29,7 +29,7 @@ test.describe('Chart animation', () => {
             ]) {
                 test(`${type} respects ${name}`, async ({ page }) => {
                     await page.emulateMedia({ reducedMotion });
-                    await page.evaluate(({ type, duration }) => window.makeChart({
+                    await page.evaluate(({ type, duration }) => window.createChart({
                         type, animation: { duration },
                     }), { type, duration });
 
@@ -59,7 +59,7 @@ test.describe('Chart animation', () => {
                         return draw.call(this);
                     };
 
-                    window.makeChart({ animation: { duration } });
+                    window.createChart({ animation: { duration } });
                     const construction = count;
 
                     count = 0;
@@ -82,7 +82,7 @@ test.describe('Chart animation', () => {
 
         test('clamps negative duration to zero on update', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart();
+                window.createChart();
                 window.chart.setSettings({ animation: { duration: -1 } });
             });
 
@@ -98,7 +98,7 @@ test.describe('Chart animation', () => {
 
             for (const easing of ['linear', 'easeOutQuad', 'easeInOutQuad']) {
                 await page.evaluate((curve) => {
-                    window.makeChart({
+                    window.createChart({
                         type: 'line',
                         animation: { duration: 1000, easing: curve },
                         data: {
@@ -134,7 +134,7 @@ test.describe('Chart animation', () => {
                 await page.emulateMedia({ reducedMotion: 'no-preference' });
 
                 await page.evaluate((chartType) => {
-                    window.makeChart({
+                    window.createChart({
                         type: chartType,
                         animation: { duration: 1000, easing: 'linear' },
                         data: {
@@ -191,7 +191,7 @@ test.describe('Chart animation', () => {
         test('scatter transitions interpolate numeric coordinates', async ({ page }) => {
             await page.emulateMedia({ reducedMotion: 'no-preference' });
             await page.evaluate(() => {
-                window.makeChart({
+                window.createChart({
                     type: 'scatter',
                     data: { datasets: [{ data: [{ x: 2, y: 2 }, { x: 10, y: 10 }] }] },
                 });
@@ -225,7 +225,7 @@ test.describe('Chart animation', () => {
                     return draw.call(this);
                 };
 
-                window.makeChart({ animation: { duration: 100 } });
+                window.createChart({ animation: { duration: 100 } });
             });
 
             await page.clock.runFor(200);
@@ -241,7 +241,7 @@ test.describe('Chart animation', () => {
         test('line hit regions follow moving points', async ({ page }) => {
             await page.emulateMedia({ reducedMotion: 'no-preference' });
             await page.evaluate(() => {
-                window.makeChart({
+                window.createChart({
                     type: 'line',
                     animation: { duration: 1000, easing: 'linear' },
                     data: {
@@ -281,7 +281,7 @@ test.describe('Chart animation', () => {
         test('pie hover preserves the current sweep and cannot hit unrevealed slices', async ({ page }) => {
             await page.emulateMedia({ reducedMotion: 'no-preference' });
             await page.evaluate(() => {
-                window.makeChart({
+                window.createChart({
                     type: 'pie',
                     animation: { duration: 1000, easing: 'linear' },
                     data: {
@@ -330,7 +330,7 @@ test.describe('Chart animation', () => {
                             return draw.call(this);
                         };
 
-                        window.makeChart({ type, animation: { duration: 1000, easing: 'linear' } });
+                        window.createChart({ type, animation: { duration: 1000, easing: 'linear' } });
                     }, type);
 
                     await page.clock.runFor(250);
@@ -363,7 +363,7 @@ test.describe('Chart animation', () => {
                     return draw.call(this);
                 };
 
-                window.makeChart({ animation: { duration: 100 } });
+                window.createChart({ animation: { duration: 100 } });
             });
 
             await page.clock.runFor(200);

@@ -53,7 +53,7 @@ test.describe('Chart', () => {
     test.describe('#resize', () => {
         test('tracks changes to the container dimensions', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart();
+                window.createChart();
 
                 const node = document.getElementById('chart');
 
@@ -68,7 +68,7 @@ test.describe('Chart', () => {
         test('hidden chart recovers when shown and supports manual resize', async ({ page }) => {
             await page.evaluate(() => {
                 document.getElementById('chart').style.display = 'none';
-                window.makeChart({ responsive: false });
+                window.createChart({ responsive: false });
                 document.getElementById('chart').style.display = '';
                 window.chart.resize();
             });
@@ -81,7 +81,7 @@ test.describe('Chart', () => {
                 const node = document.getElementById('chart');
 
                 node.style.height = 'auto';
-                window.makeChart();
+                window.createChart();
             });
 
             await expect(page.locator('canvas')).toHaveAttribute('height', '300');
@@ -97,7 +97,7 @@ test.describe('Chart', () => {
 
         test('enabling responsive sizing measures changes made while it was disabled', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart({ responsive: false });
+                window.createChart({ responsive: false });
                 document.getElementById('chart').style.width = '320px';
             });
 
@@ -132,7 +132,7 @@ test.describe('Chart', () => {
         test.beforeEach(async ({ page }) => {
             await page.evaluate(() => {
                 document.getElementById('chart').innerHTML = '<span id="original">Original content</span>';
-                window.makeChart();
+                window.createChart();
             });
         });
 

@@ -1,6 +1,4 @@
-/**
- * @import { Page } from '@playwright/test';
- */
+/** @import { Page } from '@playwright/test'; */
 
 /**
  * Creates the chart container and a factory with predictable rendering defaults.
@@ -12,7 +10,7 @@ export async function setupChart({ page }) {
         window.chart = null;
 
         // Keep construction in the page so tests can supply browser-local formatters.
-        window.makeChart = (settings = {}) => {
+        window.createChart = (settings = {}) => {
             window.chart?.dispose();
 
             window.chart = new Chart(document.getElementById('chart'), {

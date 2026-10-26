@@ -9,7 +9,7 @@ test.describe('Chart options', () => {
             const input = await page.evaluateHandle(() => {
                 const custom = [[1, 2], [{ value: 3 }]];
 
-                window.makeChart({ custom });
+                window.createChart({ custom });
                 custom[0].push(4);
                 custom[1][0].value = 5;
 
@@ -23,7 +23,7 @@ test.describe('Chart options', () => {
 
         test('replaces arrays instead of retaining entries from the previous value', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart({ custom: [[1, 2], [3, 4]] });
+                window.createChart({ custom: [[1, 2], [3, 4]] });
                 window.chart.setSettings({ custom: [[5]] });
             });
 
@@ -32,7 +32,7 @@ test.describe('Chart options', () => {
 
         test('merges nested plain objects without dropping existing properties', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart({ custom: { nested: { first: 1, second: 2 } } });
+                window.createChart({ custom: { nested: { first: 1, second: 2 } } });
                 window.chart.setSettings({ custom: { nested: { second: 3 } } });
             });
 
@@ -45,7 +45,7 @@ test.describe('Chart options', () => {
                 const custom = Object.create(null);
 
                 custom.value = 1;
-                window.makeChart({ custom });
+                window.createChart({ custom });
                 custom.value = 2;
             });
 
@@ -63,7 +63,7 @@ test.describe('Chart options', () => {
 
                     const value = type === 'date' ? new Date('2026-01-01T00:00:00Z') : new Formatter();
 
-                    window.makeChart({ custom: { value, entries: [value] } });
+                    window.createChart({ custom: { value, entries: [value] } });
                     window.chart.setSettings({ title: { text: 'Updated' } });
 
                     return value;
@@ -82,7 +82,7 @@ test.describe('Chart options', () => {
         ]) {
             test(`replaces ${name} with a plain object without retaining indexed properties`, async ({ page }) => {
                 await page.evaluate((value) => {
-                    window.makeChart({ custom: value });
+                    window.createChart({ custom: value });
                     window.chart.setSettings({ custom: { value: 1 } });
                 }, value);
 
@@ -94,7 +94,7 @@ test.describe('Chart options', () => {
 
     test.describe('font option', () => {
         test('normalizes numeric strings in inherited fonts', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({ font: { size: '16', lineHeight: '1.5' } }));
+            await page.evaluate(() => window.createChart({ font: { size: '16', lineHeight: '1.5' } }));
 
             const options = await page.evaluate(() => window.chart.options);
 
@@ -105,7 +105,7 @@ test.describe('Chart options', () => {
 
         test('falls back to the default size for an invalid font update', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart({ font: { size: 16 } });
+                window.createChart({ font: { size: 16 } });
                 window.chart.setSettings({ font: { size: 0 } });
             });
 
@@ -115,14 +115,14 @@ test.describe('Chart options', () => {
 
     test.describe('layout option', () => {
         test('normalizes numeric padding strings', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({ layout: { padding: '24' } }));
+            await page.evaluate(() => window.createChart({ layout: { padding: '24' } }));
 
             expect(await page.evaluate(() => window.chart.options.layout.padding)).toBe(24);
         });
 
         test('falls back to default padding for an invalid update', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart({ layout: { padding: 24 } });
+                window.createChart({ layout: { padding: 24 } });
                 window.chart.setSettings({ layout: { padding: 'invalid' } });
             });
 
@@ -132,7 +132,7 @@ test.describe('Chart options', () => {
 
     test.describe('title option', () => {
         test('falls back to the default position for an unknown edge', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({ title: { position: 'unknown' } }));
+            await page.evaluate(() => window.createChart({ title: { position: 'unknown' } }));
 
             expect(await page.evaluate(() => window.chart.options.title.position)).toBe('top');
         });
@@ -140,7 +140,7 @@ test.describe('Chart options', () => {
 
     test.describe('legend option', () => {
         test('normalizes numeric width and swatch strings', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({ legend: { maxWidth: '300', labels: { boxWidth: '18' } } }));
+            await page.evaluate(() => window.createChart({ legend: { maxWidth: '300', labels: { boxWidth: '18' } } }));
 
             const legend = await page.evaluate(() => window.chart.options.legend);
 
@@ -151,13 +151,13 @@ test.describe('Chart options', () => {
 
     test.describe('tooltip option', () => {
         test('anchors tooltips to the data mark by default', async ({ page }) => {
-            await page.evaluate(() => window.makeChart());
+            await page.evaluate(() => window.createChart());
 
             expect(await page.evaluate(() => window.chart.options.tooltip.position)).toBe('fixed');
         });
 
         test('clamps negative corner radii and falls back for invalid arrow sizes', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({ tooltip: { borderRadius: -1, arrowSize: Infinity } }));
+            await page.evaluate(() => window.createChart({ tooltip: { borderRadius: -1, arrowSize: Infinity } }));
 
             const tooltip = await page.evaluate(() => window.chart.options.tooltip);
 
@@ -168,7 +168,7 @@ test.describe('Chart options', () => {
 
     test.describe('dataset options', () => {
         test('normalizes numeric values and point radii', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({
+            await page.evaluate(() => window.createChart({
                 data: { labels: ['A'], datasets: [{ data: ['10'], pointRadius: '3' }] },
             }));
 
@@ -179,7 +179,7 @@ test.describe('Chart options', () => {
         });
 
         test('clamps border widths and fill opacity', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({
+            await page.evaluate(() => window.createChart({
                 data: { labels: ['A'], datasets: [{ data: [10], borderWidth: '-1', fillOpacity: 2 }] },
             }));
 
@@ -193,7 +193,7 @@ test.describe('Chart options', () => {
             const point = await page.evaluateHandle(() => {
                 const point = { x: '2', y: '3' };
 
-                window.makeChart({ type: 'scatter', data: { datasets: [{ data: [point] }] } });
+                window.createChart({ type: 'scatter', data: { datasets: [{ data: [point] }] } });
 
                 return point;
             });
@@ -206,7 +206,7 @@ test.describe('Chart options', () => {
 
     test.describe('options snapshot', () => {
         test.beforeEach(async ({ page }) => {
-            await page.evaluate(() => window.makeChart());
+            await page.evaluate(() => window.createChart());
         });
 
         test('reuses the same snapshot between reads', async ({ page }) => {
@@ -228,7 +228,7 @@ test.describe('Chart options', () => {
             const callback = await page.evaluateHandle(() => {
                 const callback = (value) => `$${value}`;
 
-                window.makeChart({ scales: { y: { ticks: { callback } } } });
+                window.createChart({ scales: { y: { ticks: { callback } } } });
 
                 return callback;
             });

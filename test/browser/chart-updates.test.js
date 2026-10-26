@@ -4,7 +4,7 @@ import { setupChart } from '../setup/chart.js';
 test.describe('Chart updates', () => {
     test.beforeEach(setupChart);
     test.beforeEach(async ({ page }) => {
-        await page.evaluate(() => window.makeChart());
+        await page.evaluate(() => window.createChart());
     });
 
     test.describe('#setData', () => {
@@ -26,7 +26,7 @@ test.describe('Chart updates', () => {
             { name: 'radial', type: 'radar', orientation: 'vertical' },
         ]) {
             test(`updates large datasets with ${name} category labels`, async ({ page }) => {
-                await page.evaluate(({ type, orientation }) => window.makeChart({
+                await page.evaluate(({ type, orientation }) => window.createChart({
                     type,
                     orientation,
                     scales: {
@@ -70,7 +70,7 @@ test.describe('Chart updates', () => {
 
         test('repeated data updates replace stale hover regions', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart();
+                window.createChart();
 
                 for (let value = 1; value <= 20; value++) {
                     window.chart.setData({
@@ -212,7 +212,7 @@ test.describe('Chart updates', () => {
 
         test('copies scatter coordinates returned by getData', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart({ type: 'scatter', data: { datasets: [{ data: [{ x: 2, y: 3 }] }] } });
+                window.createChart({ type: 'scatter', data: { datasets: [{ data: [{ x: 2, y: 3 }] }] } });
                 window.chart.getData()[0].data[0].x = 99;
             });
 

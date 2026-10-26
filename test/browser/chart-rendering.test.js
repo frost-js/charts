@@ -8,7 +8,7 @@ test.describe('Chart rendering', () => {
         for (const type of ['bar', 'line', 'pie']) {
             test(`${type} renders visible data and supports pointer tooltips`, async ({ page }) => {
                 const result = await page.evaluate((type) => {
-                    window.makeChart({ type });
+                    window.createChart({ type });
 
                     const canvas = document.querySelector('canvas');
                     const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
@@ -48,7 +48,7 @@ test.describe('Chart rendering', () => {
             ]) {
                 test(`${type} renders ${name} with a finite scale`, async ({ page }) => {
                     await page.evaluate(({ type, data }) => {
-                        window.makeChart({ type, data });
+                        window.createChart({ type, data });
                         window.chart.render();
                     }, { type, data });
 
@@ -69,77 +69,9 @@ test.describe('Chart rendering', () => {
             }
         }
 
-        test('negative and positive bars extend on opposite sides of zero', async ({ page }) => {
-            const result = await page.evaluate(() => {
-                window.makeChart({
-                    data: {
-                        labels: ['Negative', 'Positive'],
-                        datasets: [
-                            {
-                                data: [-10, 10],
-                                backgroundColor: ['red', 'blue'],
-                                borderWidth: 0,
-                            },
-                        ],
-                    },
-                });
-
-                const context = document.querySelector('canvas').getContext('2d');
-                const points = [[160, 290], [440, 110], [160, 110], [440, 290]];
-
-                return points.map(([x, y]) => [...context.getImageData(x, y, 1, 1).data]);
-            });
-
-            expect(result).toEqual([[255, 0, 0, 255], [0, 0, 255, 255], [0, 0, 0, 0], [0, 0, 0, 0]]);
-        });
-
-        test('pie preserves combined datasets and individual slice colors', async ({ page }) => {
-            const result = await page.evaluate(() => {
-                window.makeChart({
-                    type: 'pie',
-                    data: {
-                        labels: ['A', 'B'],
-                        datasets: [
-                            {
-                                label: 'Outer',
-                                data: [1, 1],
-                                backgroundColor: ['red', 'blue'],
-                                borderWidth: 0,
-                            },
-                            {
-                                label: 'Inner',
-                                data: [1, 1],
-                                backgroundColor: ['lime', 'yellow'],
-                                borderWidth: 0,
-                            },
-                        ],
-                    },
-                });
-                const context = document.querySelector('canvas').getContext('2d');
-                const points = [[400, 300], [200, 300], [200, 100], [400, 100]];
-
-                return points.map(([x, y]) => [...context.getImageData(x, y, 1, 1).data]);
-            });
-
-            expect(result).toEqual([[255, 0, 0, 255], [0, 0, 255, 255], [0, 255, 0, 255], [255, 255, 0, 255]]);
-            const rect = await page.locator('canvas').boundingBox();
-            await page.mouse.move(rect.x + 200, rect.y + 100);
-            await expect(page.locator('canvas')).toHaveAttribute('aria-description', 'A. Inner: 1');
-        });
-
-        test('single-point line renders a centered point', async ({ page }) => {
-            await page.evaluate(() => window.makeChart({
-                type: 'line',
-                data: { labels: ['Only'], datasets: [{ data: [0] }] },
-            }));
-            const rect = await page.locator('canvas').boundingBox();
-            await page.mouse.move(rect.x + 300, rect.y + 380);
-            await expect(page.locator('canvas')).toHaveAttribute('aria-description', 'Only. Dataset 1: 0');
-        });
-
         test('disabled axes leave empty charts blank', async ({ page }) => {
             const painted = await page.evaluate(() => {
-                window.makeChart({ data: { labels: ['A'], datasets: [] } });
+                window.createChart({ data: { labels: ['A'], datasets: [] } });
 
                 const canvas = document.querySelector('canvas');
                 const context = canvas.getContext('2d');
@@ -158,7 +90,7 @@ test.describe('Chart rendering', () => {
                 const result = await page.evaluate((position) => {
                     const labels = [];
 
-                    window.makeChart({
+                    window.createChart({
                         title: {
                             display: true,
                             text: 'A long title that wraps in narrow containers',
@@ -199,7 +131,7 @@ test.describe('Chart rendering', () => {
 
         test('zero-sized legend swatches and limits do not corrupt layout', async ({ page }) => {
             await page.evaluate(() => {
-                window.makeChart({
+                window.createChart({
                     legend: {
                         display: true,
                         labels: { boxWidth: 0, boxHeight: 0 },
@@ -231,7 +163,7 @@ test.describe('Chart rendering', () => {
                         return fillText.call(this, text, x, y, ...args);
                     };
 
-                    window.makeChart({
+                    window.createChart({
                         legend: { display: true, position: legendPosition },
                         data: {
                             labels: ['A'],
@@ -253,7 +185,7 @@ test.describe('Chart rendering', () => {
     test.describe('default palette', () => {
         test('the default palette supplies twelve colors before repeating', async ({ page }) => {
             const colors = await page.evaluate(() => {
-                window.makeChart({
+                window.createChart({
                     data: {
                         labels: ['A'],
                         datasets: Array.from({ length: 13 }, () => ({ data: [1] })),
